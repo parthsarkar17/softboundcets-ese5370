@@ -1,0 +1,14 @@
+$(pwd)/build/bin/clang \
+    -O0  \
+    -fuse-ld=$(pwd)/build/bin/ld.lld \
+    -flto \
+    -Wl, \
+        -mllvm=-load=$(pwd)/build/lib/LLVMSoftBoundCETSLTO.so, \
+        --whole-archive, \
+            -L$(pwd)/build/lib/clang/12.0.1/lib/linux, \
+            -Bstatic, \
+            -lclang_rt.softboundcets-x86_64, \
+            -Bdynamic, \
+        --no-whole-archive \
+    -c small_lib.c \
+    -o small_lib.o

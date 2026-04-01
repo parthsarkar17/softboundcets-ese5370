@@ -244,8 +244,7 @@ void __softboundcets_abort(void) {
   dummy = 1;
 }
 #else
-__attribute__((__noreturn__)) void
-__softboundcets_abort(void) {
+__attribute__((__noreturn__)) void __softboundcets_abort(void) {
   fprintf(stderr,
           "\nSoftboundcets: Memory safety violation detected\n\nBacktrace:\n");
 
@@ -966,6 +965,7 @@ __RT_VISIBILITY void __softboundcets_metadata_store(void *addr_of_ptr,
 
   primary_index = (ptr >> 25);
   trie_secondary_table = __softboundcets_trie_primary_table[primary_index];
+  printf("primary table located at : %p", __softboundcets_trie_primary_table);
 
   if (UNLIKELY(trie_secondary_table == NULL)) {
     trie_secondary_table = __softboundcets_trie_allocate();
@@ -1070,8 +1070,8 @@ __softboundcets_shadowspace_masked_vector_metadata_ptr(void *addr_of_ptr,
 }
 
 #if __SOFTBOUNDCETS_SPATIAL_TEMPORAL || __SOFTBOUNDCETS_SPATIAL
-__RT_VISIBILITY sbcets_base_t
-__softboundcets_metadata_load_base(void *address) {
+__RT_VISIBILITY
+sbcets_base_t __softboundcets_metadata_load_base(void *address) {
   __softboundcets_metadata_t *entry_ptr =
       __softboundcets_shadowspace_metadata_ptr(address);
   sbcets_base_t base = entry_ptr->base;
