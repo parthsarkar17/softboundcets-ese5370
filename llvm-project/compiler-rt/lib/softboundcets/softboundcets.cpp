@@ -960,12 +960,20 @@ __RT_VISIBILITY void __softboundcets_metadata_store(void *addr_of_ptr,
 #endif
 
   size_t ptr = (size_t)addr_of_ptr;
+
+  unsigned long *addr_of_ptr_long = (unsigned long *)addr_of_ptr;
+
+  printf("Spotted a store into metadata table for pointer %p. Primary table at "
+         "%p\n\n",
+         *addr_of_ptr_long, __softboundcets_trie_primary_table);
+
   size_t primary_index;
   __softboundcets_metadata_t *trie_secondary_table;
 
   primary_index = (ptr >> 25);
   trie_secondary_table = __softboundcets_trie_primary_table[primary_index];
-  printf("primary table located at : %p", __softboundcets_trie_primary_table);
+  // printf("primary table located at : %p",
+  // __softboundcets_trie_primary_table);
 
   if (UNLIKELY(trie_secondary_table == NULL)) {
     trie_secondary_table = __softboundcets_trie_allocate();
