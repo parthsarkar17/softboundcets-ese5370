@@ -928,6 +928,7 @@ __RT_VISIBILITY void __softboundcets_memset_check(void *dest, size_t size
 /* #endif */
 
 /* Metadata store parameterized by the mode of checking */
+int i = 0;
 
 #if __SOFTBOUNDCETS_SPATIAL
 
@@ -960,6 +961,8 @@ __RT_VISIBILITY void __softboundcets_metadata_store(void *addr_of_ptr,
 #endif
 
   size_t ptr = (size_t)addr_of_ptr;
+  printf("primary metadata table located at %p\n",
+         __softboundcets_trie_primary_table);
 
   // unsigned long *addr_of_ptr_long = (unsigned long *)addr_of_ptr;
 
@@ -967,6 +970,18 @@ __RT_VISIBILITY void __softboundcets_metadata_store(void *addr_of_ptr,
   // at "
   //        "%p\n\n",
   //        *addr_of_ptr_long, __softboundcets_trie_primary_table);
+
+  if (i == 0) {
+    unsigned char *table_header =
+        (unsigned char *)__softboundcets_trie_primary_table;
+    for (int i = 0; i < 1024; i++) {
+      printf("%d, ", *(table_header + i));
+    }
+    printf("\n\n\n");
+    i++;
+  }
+
+  // return 0;
 
   size_t primary_index;
   __softboundcets_metadata_t *trie_secondary_table;
