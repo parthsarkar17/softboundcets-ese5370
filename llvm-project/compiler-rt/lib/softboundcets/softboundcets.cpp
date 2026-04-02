@@ -961,11 +961,12 @@ __RT_VISIBILITY void __softboundcets_metadata_store(void *addr_of_ptr,
 
   size_t ptr = (size_t)addr_of_ptr;
 
-  unsigned long *addr_of_ptr_long = (unsigned long *)addr_of_ptr;
+  // unsigned long *addr_of_ptr_long = (unsigned long *)addr_of_ptr;
 
-  printf("Spotted a store into metadata table for pointer %p. Primary table at "
-         "%p\n\n",
-         *addr_of_ptr_long, __softboundcets_trie_primary_table);
+  // printf("Spotted a store into metadata table for pointer %p. Primary table
+  // at "
+  //        "%p\n\n",
+  //        *addr_of_ptr_long, __softboundcets_trie_primary_table);
 
   size_t primary_index;
   __softboundcets_metadata_t *trie_secondary_table;

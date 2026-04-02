@@ -71,4 +71,5 @@ pythonenv*
 
 # parth's ignores
 /attack/*.o
+/attack/*.exe
 /test/*.o

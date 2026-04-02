@@ -1,1 +1,1 @@
-void overwrite_metadata_map();
+void overwrite_metadata_map(void *addr_of_ptr, int array_len);
