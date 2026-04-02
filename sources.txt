@@ -1,0 +1,22 @@
+segfault handler:
+- https://man7.org/linux/man-pages/man7/signal.7.html
+- https://man7.org/linux/man-pages/man2/sigaction.2.html
+- https://blog.llvm.org/2011/05/what-every-c-programmer-should-know.html
+- https://man7.org/linux/man-pages/man3/longjmp.3.html
+
+understanding two-level trie representation:
+- https://nnethercote.github.io/pubs/shadow-memory2007.pdf
+
+llvm internal representation documentation:
+- https://llvm.org/doxygen/topics.html
+- https://www.cs.cornell.edu/~asampson/blog/llvm.html
+- lto: https://llvm.org/docs/LinkTimeOptimization.html
+
+understanding c++
+- https://www.kea.nu/files/textbooks/humblelearn2code/cpluspluscrashcourse.pdf
+
+
+softbound, cets:
+- https://dl.acm.org/doi/pdf/10.1145/3642974.3652285
+- https://acg.cis.upenn.edu/papers/ismm10_cets.pdf
+- https://llvm.org/pubs/2009-06-PLDI-SoftBound.pdf
