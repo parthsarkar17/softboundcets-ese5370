@@ -1,0 +1,71 @@
+DenseMap<AllocaInst*, int64_t> allocaOffsets;
+
+int64_t offset = 0;
+for (auto& I : F.getEntryBlock()) {
+    if (auto* AI = dyn_cast<AllocaInst>(&I)) {
+        allocaOffsets[AI] = offset;
+        // Use the DataLayout for accurate sizing
+        offset += DL.getTypeAllocSize(AI->getAllocatedType());
+    }
+}
+
+
+// Maps an SSA Value* to the alloca it points at (if known)
+DenseMap<Value*, AllocaInst*> pointsToAlloca;
+
+for (auto& BB : F) {
+    for (auto& I : BB) {
+        if (auto* AI = dyn_cast<AllocaInst>(&I))
+            pointsToAlloca[AI] = AI;           // alloca points to itself
+
+        else if (auto* LI = dyn_cast<LoadInst>(&I)) {
+            // If we load from a pointer-to-pointer backed by an alloca,
+            // record what the loaded pointer points at
+            Value* ptr = LI->getPointerOperand();
+            if (pointsToAlloca.count(ptr)) {
+                // This load reads a pointer; the result may point to an alloca
+                // — resolve via the store-tracking below
+            }
+        }
+
+        else if (auto* SI = dyn_cast<StoreInst>(&I)) {
+            Value* val = SI->getValueOperand();
+            Value* dst = SI->getPointerOperand();
+            // If storing an alloca-derived pointer into another alloca slot,
+            // record that relationship
+            if (pointsToAlloca.count(val) && pointsToAlloca.count(dst))
+                storedPointers[dst] = pointsToAlloca[val];
+        }
+    }
+}
+
+else if (auto* GEP = dyn_cast<GetElementPtrInst>(&I)) {
+    Value* base = GEP->getPointerOperand();
+    if (AllocaInst* AI = pointsToAlloca.lookup(base)) {
+        // The GEP result is still a pointer into the same alloca.
+        // Record it, and compute the additional byte offset if needed.
+        pointsToAlloca[GEP] = AI;
+
+        // Optionally track the sub-offset within the alloca
+        APInt subOffset(DL.getIndexTypeSizeInBits(base->getType()), 0);
+        if (GEP->accumulateConstantOffset(DL, subOffset)) {
+            subOffsets[GEP] = allocaOffsets[AI] + subOffset.getSExtValue();
+        } else {
+            // Non-constant index (e.g. arr[i]) — offset is dynamic.
+            // You can still track the alloca identity but lose the
+            // precise byte offset.
+            dynamicOffsetPtrs.insert(GEP);
+        }
+    }
+}
+
+
+Dataflow lattice values:
+
+    - T
+    - n
+    - B
+
+
+Dataflow values:
+    - graphs 

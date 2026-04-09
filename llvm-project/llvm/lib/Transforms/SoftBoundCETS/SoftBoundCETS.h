@@ -199,7 +199,7 @@ private:
   Constant *MConstantIntZero;
 
   Constant *MGlobalLockOne;
-  std::set<Constant*> MGlobalLockOnes;
+  std::set<Constant *> MGlobalLockOnes;
 
   /* Infinite bound where bound cannot be inferred in VarArg
    * functions
@@ -258,6 +258,9 @@ private:
      pass
    */
   bool runOnModule(Module &) override;
+
+  // parth-added
+  void pointerAliasing(Function &F);
 
   void initializeInitFunctions(Module &M);
   void initializeDereferenceCheckHandlers(Module &M);

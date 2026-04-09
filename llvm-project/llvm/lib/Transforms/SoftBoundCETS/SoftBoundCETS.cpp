@@ -42,6 +42,9 @@
 // WITH THE SOFTWARE.
 //===---------------------------------------------------------------------===//
 
+#include "SoftBoundCETS.h"
+#include "FixByValAttributes.h"
+#include "Utils.h"
 #include "llvm-c/Transforms/AggressiveInstCombine.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/IR/Constants.h"
@@ -62,11 +65,8 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <cstddef>
+#include <iostream>
 #include <regex>
-
-#include "FixByValAttributes.h"
-#include "SoftBoundCETS.h"
-#include "Utils.h"
 
 static cl::opt<bool> ClEliminateStructChecks(
     "eliminate_struct_checks",
@@ -822,7 +822,7 @@ StringMap<bool> SoftBoundCETSPass::MFunctionHasSoftboundCETSDefinition = {
 };
 
 StringSet<> SoftBoundCETSPass::MIgnorableLLVMIntrinsics = {
-   "llvm.lifetime.start.p0i8", "llvm.lifetime.end.p0i8"};
+    "llvm.lifetime.start.p0i8", "llvm.lifetime.end.p0i8"};
 
 //
 // Method: getAssociateFuncLock()
@@ -2929,7 +2929,7 @@ void SoftBoundCETSPass::addSpatialChecks(Instruction *load_store,
           }
         }
       } // Iterating over uses ends
-    }   // BOUNDSCHECKOPT ends
+    } // BOUNDSCHECKOPT ends
   }
 
   Value *Base = NULL;
@@ -3336,7 +3336,7 @@ void SoftBoundCETSPass::addTemporalChecks(Instruction *load_store,
           }
         }
       } /* Iterating over uses ends */
-    }   /* TEMPORALBOUNDSCHECKOPT ends */
+    } /* TEMPORALBOUNDSCHECKOPT ends */
   }
 
   Value *Key = getAssociatedKey(pointer_operand);
@@ -3958,9 +3958,9 @@ bool SoftBoundCETSPass::checkIfFunctionOfInterest(Function *func) {
   if (func->isDeclaration())
     return false;
 
-    /* TODO: URGENT: Need to do base and bound propagation in variable
-     * argument functions
-     */
+  /* TODO: URGENT: Need to do base and bound propagation in variable
+   * argument functions
+   */
 #if 0
   if(func.isVarArg())
     return false;
@@ -4059,8 +4059,8 @@ void SoftBoundCETSPass::handleGEP(GetElementPtrInst *GEP) {
   // we need to account for
   // https://llvm.org/docs/LangRef.html#vector-of-pointers: in short; if a
   // vector of offsets is used as indices, the result of the GEP is a vector. As
-  // we do not calculate subbounds for gep vectors, we need to associate each pointer in the
-  // resulting vector with the metadata of the GEPPtrOp
+  // we do not calculate subbounds for gep vectors, we need to associate each
+  // pointer in the resulting vector with the metadata of the GEPPtrOp
   FixedVectorType *FixedVectorTy = dyn_cast<FixedVectorType>(GEP->getType());
   if (FixedVectorTy && !isa<FixedVectorType>(GEPPtrOp->getType())) {
     auto VectorSize = FixedVectorTy->getElementCount().getValue();
@@ -4703,8 +4703,8 @@ void SoftBoundCETSPass::gatherBaseBoundPass2(Function &F) {
       default:
         break;
       } /* Switch Ends */
-    }   /* BasicBlock iterator Ends */
-  }     /* Function iterator Ends */
+    } /* BasicBlock iterator Ends */
+  } /* Function iterator Ends */
 }
 
 void SoftBoundCETSPass::introspectMetadata(Function *func, Value *ptr_value,
@@ -4768,6 +4768,27 @@ void SoftBoundCETSPass::freeFunctionKeyLock(Function *func, Value *&func_key,
       assert(first_inst_func && "function doesn't have any instruction ??");
       args.push_back(func_key);
       CallInst::Create(DeallocateStackLockAndKeyFn, args, "", ret);
+    }
+  }
+}
+
+void SoftBoundCETSPass::pointerAliasing(Function &F) {
+  SmallDenseMap<AllocaInst *, unsigned long> stack_offset_map;
+  auto DL = F.getParent()->getDataLayout();
+  for (auto &BB : F) {
+    for (auto &I : BB) {
+      if (auto *AI = dyn_cast<AllocaInst>(&I)) {
+        if (AI->isStaticAlloca()) {
+          auto size_bits = AI->getAllocationSizeInBits(DL);
+          auto size_bytes = *size_bits / 8;
+          bool is_array_alloc = AI->isArrayAllocation();
+          PointerType *t = AI->getType();
+          std::cout << "insn located at: " << AI
+                    << " and is array alloc: " << is_array_alloc
+                    << " with size: " << size_bytes << " with type : " << t
+                    << "\n";
+        }
+      }
     }
   }
 }
@@ -4962,7 +4983,7 @@ void SoftBoundCETSPass::gatherBaseBoundPass1(Function &F) {
       } break;
       }
     } // End instruction iteration.
-  }   // End basic block iteration.
+  } // End basic block iteration.
 
   if (ClTemporalSafety) {
     freeFunctionKeyLock(&F, Key, Lock, func_xmm_key_lock);
@@ -5636,9 +5657,8 @@ TinyPtrVector<T *> SoftBoundCETSPass::createConstantBases(Constant *Const) {
   if (ConstantExpr *Expr = dyn_cast<ConstantExpr>(Const)) {
 
     // ignore all types that do not contain pointers
-    if(!isTypeWithPointers(Expr->getType()))
+    if (!isTypeWithPointers(Expr->getType()))
       return Bases;
-
 
     switch (Expr->getOpcode()) {
     case Instruction::GetElementPtr: {
@@ -5679,7 +5699,7 @@ TinyPtrVector<T *> SoftBoundCETSPass::createConstantBases(Constant *Const) {
       auto VBases = getAssociatedBases(AggOp);
 
       size_t StartIdx =
-        flattenAggregateIndices(AggOp->getType(), Expr->getIndices());
+          flattenAggregateIndices(AggOp->getType(), Expr->getIndices());
       size_t MetadataCount = countMetadata(Expr->getType());
 
       for (size_t J = StartIdx; J < StartIdx + MetadataCount; ++J) {
@@ -5695,23 +5715,25 @@ TinyPtrVector<T *> SoftBoundCETSPass::createConstantBases(Constant *Const) {
       Constant *ValOp = Expr->getOperand(1);
 
       auto AggBases = getAssociatedBases(AggOp);
-        for (auto *Base: AggBases) {
-          Bases.push_back(dyn_cast<T>(Base));
-        }
+      for (auto *Base : AggBases) {
+        Bases.push_back(dyn_cast<T>(Base));
+      }
 
       if (!isTypeWithPointers(ValOp->getType()))
         return Bases;
 
       auto ValBases = getAssociatedBases(ValOp);
-      size_t Idx = flattenAggregateIndices(AggOp->getType(), Expr->getIndices());
+      size_t Idx =
+          flattenAggregateIndices(AggOp->getType(), Expr->getIndices());
 
       for (unsigned J = 0; J < ValBases.size(); ++J) {
-        static_cast<MutableArrayRef<T *>>(Bases)[Idx + J] = dyn_cast<T>(ValBases[J]);
+        static_cast<MutableArrayRef<T *>>(Bases)[Idx + J] =
+            dyn_cast<T>(ValBases[J]);
       }
 
       return Bases;
     }
-   }
+    }
   }
   if (auto *CAgg = dyn_cast<ConstantAggregate>(Const)) {
     if (auto *CArray = dyn_cast<ConstantArray>(CAgg)) {
@@ -5802,7 +5824,7 @@ TinyPtrVector<T *> SoftBoundCETSPass::createConstantBounds(Constant *Const,
   if (ConstantExpr *Expr = dyn_cast<ConstantExpr>(Const)) {
 
     // ignore all types that do not contain pointers
-    if(!isTypeWithPointers(Expr->getType()))
+    if (!isTypeWithPointers(Expr->getType()))
       return Bounds;
 
     switch (Expr->getOpcode()) {
@@ -6114,7 +6136,7 @@ void SoftBoundCETSPass::identifyOriginalInst(Function *func) {
       //   }
       // }
     } /* BasicBlock ends */
-  }   /* Function ends */
+  } /* Function ends */
 }
 
 bool SoftBoundCETSPass::runOnModule(Module &M) {
@@ -6146,6 +6168,7 @@ bool SoftBoundCETSPass::runOnModule(Module &M) {
   } else {
     m_is_64_bit = false;
   }
+
   initializeSoftBoundVariables(M);
   initializeInitFunctions(M);
   initializeDereferenceCheckHandlers(M);
@@ -6156,6 +6179,7 @@ bool SoftBoundCETSPass::runOnModule(Module &M) {
   addMetadataToGlobals(M);
 
   for (Function &F : M.functions()) {
+
     LLVM_DEBUG(
         dbgs() << "\n====================================================="
                   "====================\n");
@@ -6182,7 +6206,7 @@ bool SoftBoundCETSPass::runOnModule(Module &M) {
     // block We make two passes over the IR for base and bound
     // propagation and one pass for dereference checks
     //
-
+    pointerAliasing(F);
     gatherBaseBoundPass1(F);
     gatherBaseBoundPass2(F);
     addDereferenceChecks(&F);

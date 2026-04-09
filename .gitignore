@@ -73,3 +73,4 @@ pythonenv*
 /attack/*.o
 /attack/*.exe
 /test/*.o
+*.o

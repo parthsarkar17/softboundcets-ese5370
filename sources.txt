@@ -20,3 +20,50 @@ softbound, cets:
 - https://dl.acm.org/doi/pdf/10.1145/3642974.3652285
 - https://acg.cis.upenn.edu/papers/ismm10_cets.pdf
 - https://llvm.org/pubs/2009-06-PLDI-SoftBound.pdf
+
+
+
+Points-to analysis notes:
+
+    - will focus on stack-allocations because the size is compile-time known
+    - goal:
+        - reduce the number of pointer-to-pointer memory location dereferences, which incur the shadow table lookup (as we've shown, it is susceptible to failure)
+    
+    - broadly, want to map each variable to the specific stack location it points to
+    - variables are either %x (regular variables) or *%x (dereferences of variables)
+    - information is obviously always not attainable
+        - ex. 
+            - use of variables in `getelementptr` instruction
+    - so, lattice values look like:
+        - BOTTOM
+        - l_x
+        - TOP
+    
+    - simple set of LLVM instructions:
+        - alloca allocates stack space
+        - getelementptr performs pointer arithmetic
+        - load reads from location
+        - store writes to location
+
+
+The values mapped are in the set S = flat(Nat), because we have:
+
+                                T
+                              / | \
+                             /  |  \
+                            /   |   \
+                        ... 1   0   2 ...
+                            \   |   /
+                             \  |  /
+                              \ | /
+                                B
+
+where 0, 1, 2, ... are offsets from frame pointer FP.
+
+At each program point, construct a map L : Var -> S
+
+Var is the set of variables that point to the stack `v`, in addition to `*v`. I.e.
+Var = {(v, *v) | v \in set of stack pointers}
+
+n           kill(n)         def(n)
+
