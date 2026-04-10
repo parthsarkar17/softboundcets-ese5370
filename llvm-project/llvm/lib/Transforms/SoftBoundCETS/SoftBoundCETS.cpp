@@ -47,6 +47,7 @@
 #include "Utils.h"
 #include "llvm-c/Transforms/AggressiveInstCombine.h"
 #include "llvm/ADT/TinyPtrVector.h"
+// #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -4772,17 +4773,111 @@ void SoftBoundCETSPass::freeFunctionKeyLock(Function *func, Value *&func_key,
   }
 }
 
+namespace llvm {
+template <> struct DenseMapInfo<bool> {
+  static inline bool getEmptyKey() { return false; }
+  static inline bool getTombstoneKey() { return true; }
+  static unsigned getHashValue(const bool &val) { return val ? 1 : 0; }
+  static bool isEqual(const bool &a, const bool &b) { return a == b; }
+};
+} // namespace llvm
+
+///  | TOP             = 0
+///  | OFFSET (value)  = 1
+///  | BOTTOM          = 2
+///
+/// For a given basic block, this function provides an initial map from stack
+/// variables and dereferenced stack variables to values of the lattice.
+/// Specifically, the returned object maps an instruction (along with a boolean
+/// describing whether it is a normal variable (true) or a dereference (false))
+/// to an object representing a value in the lattice (documented above).
+DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
+initialize_var2value(Function &F) {
+  DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
+      insn2offset;
+  for (auto &BB : F) {
+    for (auto &I : BB) {
+      if (!(I.getType()->isVoidTy())) {
+        llvm::Value *V = &I;
+        insn2offset[{V, true}] = {2, 0};
+        insn2offset[{V, false}] = {2, 0};
+      }
+    }
+  }
+  return insn2offset;
+}
+
+/// Merge individual lattice values
+std::pair<unsigned long, unsigned long>
+merge_lattice_values(std::pair<unsigned long, unsigned long> v1,
+                     std::pair<unsigned long, unsigned long> v2) {
+
+  // unpack
+  auto v1_0 = get<0>(v1);
+  auto v1_1 = get<1>(v1);
+  auto v2_0 = get<0>(v2);
+  auto v2_1 = get<1>(v2);
+
+  // do comparisons
+  if ((v1_0 == 0) && (v2_0 == 0)) {
+    return {0, 0};
+  } else if ((v1_0 == 0) && (v2_0 == 1)) {
+    return {0, 0};
+  } else if ((v1_0 == 0) && (v2_0 == 2)) {
+    return {0, 0};
+  } else if ((v1_0 == 1) && (v2_0 == 0)) {
+    return {0, 0};
+  } else if ((v1_0 == 1) && (v2_0 == 1)) {
+    if (v1_1 == v2_1) {
+      return {1, v1_1};
+    } else {
+      return {0, 0};
+    }
+  } else if ((v1_0 == 1) && (v2_0 == 2)) {
+    return {1, v1_1};
+  } else if ((v1_0 == 2) && (v2_0 == 0)) {
+    return {0, 0};
+  } else if ((v1_0 == 2) && (v2_0 == 1)) {
+    return {1, v2_1};
+  } else if ((v1_0 == 2) && (v2_0 == 2)) {
+    return {2, 0};
+  } else {
+    printf("Something bad happened!\n");
+  }
+}
+
+/// Performs a merge across maps from variables to lattice values. Probably used
+/// for merging the out maps of predecessors of a basic block B into the in of B
+DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
+join(DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
+         m1,
+     DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
+         m2) {
+  DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
+      new_map;
+  for (auto &[key, m1_value] : m1) {
+    auto m2_value = m2[key];
+    auto new_value = merge_lattice_values(m1_value, m2_value);
+    new_map[key] = new_value;
+  }
+  return new_map;
+}
+
 void SoftBoundCETSPass::pointerAliasing(Function &F) {
+
+  // map stack allocation sites to offset from frame pointer
   SmallDenseMap<AllocaInst *, unsigned long> stack_offset_map;
+  unsigned long offset = 0;
   auto DL = F.getParent()->getDataLayout();
   for (auto &BB : F) {
     for (auto &I : BB) {
       if (auto *AI = dyn_cast<AllocaInst>(&I)) {
         if (AI->isStaticAlloca()) {
-          auto size_bits = AI->getAllocationSizeInBits(DL);
-          auto size_bytes = *size_bits / 8;
+          unsigned long size_bytes = *AI->getAllocationSizeInBits(DL) / 8;
           bool is_array_alloc = AI->isArrayAllocation();
           PointerType *t = AI->getType();
+          stack_offset_map[AI] = offset;
+          offset = offset + size_bytes;
           std::cout << "insn located at: " << AI
                     << " and is array alloc: " << is_array_alloc
                     << " with size: " << size_bytes << " with type : " << t
@@ -4790,6 +4885,53 @@ void SoftBoundCETSPass::pointerAliasing(Function &F) {
         }
       }
     }
+  }
+
+  for (auto &[key, value] : stack_offset_map) {
+    std::cout << "insn : " << key << " at offset : " << value << "\n";
+  }
+
+  // workflow to map stack pointer variables (bool=true) and dereferenced stack
+  // pointer variables (bool=false) to the offset from frame pointer
+  DenseMap<BasicBlock *, DenseMap<std::pair<Value *, bool>,
+                                  std::pair<unsigned long, unsigned long>>>
+      bb2in, bb2out;
+
+  for (auto &BB : F) {
+    bb2in[&BB] = initialize_var2value(F);
+    bb2out[&BB] = initialize_var2value(F);
+  }
+
+  std::queue<BasicBlock *> BBWorklist;
+  auto *BB = &F.getEntryBlock();
+  BBWorklist.push(BB);
+
+  while (BBWorklist.size() != 0) {
+
+    // get head of queue
+    BB = BBWorklist.front();
+    BBWorklist.pop();
+
+    // consolidate outputs of predecessors of this BB via JOIN function
+    auto in = initialize_var2value(F);
+    for (auto it = pred_begin(BB), et = pred_end(BB); it != et; ++it) {
+      llvm::BasicBlock *Pred = *it;
+      auto pred_out = bb2out[Pred];
+      auto new_map = join(in, pred_out);
+      in = new_map;
+    }
+
+    // std::cout << "currently on BB: " << BB << "\n";
+    // for (auto &[key, value] : in) {
+    //   std::cout << "variable: " << get<0>(key) << " with flag: " <<
+    //   get<1>(key)
+    //             << " has value: " << get<0>(value)
+    //             << "  with added data: " << get<1>(value) << "\n";
+    // }
+
+    // perform transfer function
+
+    // compare previous out[bb] and new out[bb]; if changed, continue worklist
   }
 }
 
