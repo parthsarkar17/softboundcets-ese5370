@@ -4773,6 +4773,8 @@ void SoftBoundCETSPass::freeFunctionKeyLock(Function *func, Value *&func_key,
   }
 }
 
+/// Implement DenseMapInfo for `bool`; required for std::pair<Value *, bool>
+/// to be used as a key in a DenseMap
 namespace llvm {
 template <> struct DenseMapInfo<bool> {
   static inline bool getEmptyKey() { return false; }
@@ -4796,8 +4798,12 @@ initialize_var2value(Function &F) {
   DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
       insn2offset;
   for (auto &BB : F) {
+    // llvm::outs() << "BB name : " << BB << "\n";
     for (auto &I : BB) {
-      if (!(I.getType()->isVoidTy())) {
+      llvm::Type *insn_type = I.getType();
+      bool is_ptr = insn_type->isPointerTy() || insn_type->isArrayTy() ||
+                    insn_type->isStructTy();
+      if (is_ptr) {
         llvm::Value *V = &I;
         insn2offset[{V, true}] = {2, 0};
         insn2offset[{V, false}] = {2, 0};
@@ -4846,8 +4852,9 @@ merge_lattice_values(std::pair<unsigned long, unsigned long> v1,
   }
 }
 
-/// Performs a merge across maps from variables to lattice values. Probably used
-/// for merging the out maps of predecessors of a basic block B into the in of B
+/// Performs a merge across maps from variables to lattice values. Used
+/// for the JOIN operator, which merges the out maps of predecessors of a basic
+/// block B into the in of B
 DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
 join(DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
          m1,
@@ -4878,18 +4885,19 @@ void SoftBoundCETSPass::pointerAliasing(Function &F) {
           PointerType *t = AI->getType();
           stack_offset_map[AI] = offset;
           offset = offset + size_bytes;
-          std::cout << "insn located at: " << AI
-                    << " and is array alloc: " << is_array_alloc
-                    << " with size: " << size_bytes << " with type : " << t
-                    << "\n";
+          // std::cout << "insn located at: " << AI
+          //           << " and is array alloc: " << is_array_alloc
+          //           << " with size: " << size_bytes << " with type : " << t
+          //           << "\n";
         }
       }
     }
   }
 
-  for (auto &[key, value] : stack_offset_map) {
-    std::cout << "insn : " << key << " at offset : " << value << "\n";
-  }
+  // for (auto &[key, value] : stack_offset_map) {
+  //   std::cout << "insn : " << key << " at offset : " << value << "\n";
+  // }
+  // printf("\n");
 
   // workflow to map stack pointer variables (bool=true) and dereferenced stack
   // pointer variables (bool=false) to the offset from frame pointer
@@ -4921,15 +4929,191 @@ void SoftBoundCETSPass::pointerAliasing(Function &F) {
       in = new_map;
     }
 
-    // std::cout << "currently on BB: " << BB << "\n";
-    // for (auto &[key, value] : in) {
-    //   std::cout << "variable: " << get<0>(key) << " with flag: " <<
-    //   get<1>(key)
-    //             << " has value: " << get<0>(value)
-    //             << "  with added data: " << get<1>(value) << "\n";
-    // }
+    // now, `in` maps every pointer variable to an abstract lattice value.
+    // it is the responsibility of the transfer function (i.e. instruction
+    // constraints) to refine the mapping.
+    for (auto &I : *BB) {
+      switch (I.getOpcode()) {
 
-    // perform transfer function
+      // We want to make sure all variables assigned in an ALLOCA (provided they
+      // are not dynamic) receive an abstract lattice value representing a known
+      // offset from FP
+      case Instruction::Alloca: {
+        auto *AI = dyn_cast<AllocaInst>(&I);
+        assert(AI && "Not an Alloca inst?");
+        if (AI->isStaticAlloca()) {
+          in[{AI, true}] = {1, stack_offset_map[AI]};
+        } else {
+          in[{AI, true}] = {0, 0};
+        }
+      } break;
+
+      case Instruction::Store: {
+        auto *S = dyn_cast<StoreInst>(&I);
+        assert(S && "Not a Store inst?");
+        llvm::Value *valStored = S->getValueOperand();
+        llvm::Value *locStored = S->getPointerOperand();
+
+        auto valStoredMappingIt = in.find({valStored, true});
+        if (valStoredMappingIt != in.end()) {
+          // thing to store exists in map (i.e. storing a pointer); so, need
+          // to flow the abstract lattice value into the dereference of S
+          auto valStoredMapping = valStoredMappingIt->second;
+          in[{locStored, false}] = valStoredMapping;
+        } else {
+          // if thing to store doesn't exist in map, we need to record that
+          // the dereference of S stores TOP
+          in[{locStored, false}] = {0, 0};
+        }
+      } break;
+
+      case Instruction::Load: {
+        auto *L = dyn_cast<LoadInst>(&I);
+        assert(L && "Not a Load inst?");
+
+        if (isTypeWithPointers(L->getType())) {
+          llvm::Value *derefLocation = L->getPointerOperand();
+          auto valStoredAtDerefIt = in.find({derefLocation, false});
+
+          if (valStoredAtDerefIt != in.end()) {
+            // if the pointer being dereferenced has a mapped lattice value,
+            // flow this to the pointer being assigned by the load
+            auto valStoredAtDeref = valStoredAtDerefIt->second;
+            in[{L, true}] = valStoredAtDeref;
+          } else {
+            // if it doesn't exist, then we know it has to implicity be a TOP;
+            // flow this instead of anything stored
+            in[{L, true}] = {0, 0};
+          }
+        }
+      } break;
+
+      case BitCastInst::BitCast: {
+        auto *BC = dyn_cast<BitCastInst>(&I);
+        assert(BC && "Not a BitCast inst?");
+        // here, we simply want to flow the abstract value associated with the
+        // operand (if it exists) into the result register
+        if (isTypeWithPointers(BC->getType())) {
+          llvm::Value *operand = BC->getOperand(0);
+          auto operandValIt = in.find({operand, true});
+          if (operandValIt != in.end()) {
+            auto operandVal = operandValIt->second;
+            in[{BC, true}] = operandVal;
+          } else {
+            in[{BC, true}] = {0, 0};
+          }
+        }
+      } break;
+
+      case Instruction::GetElementPtr: {
+        auto *GEP = dyn_cast<GetElementPtrInst>(&I);
+        assert(GEP && "Not a GEP inst?");
+
+        auto num_operands = GEP->getNumOperands();
+        if (num_operands == 3) {
+          if (auto *first_index = dyn_cast<ConstantInt>(GEP->getOperand(1))) {
+            if (auto *second_index =
+                    dyn_cast<ConstantInt>(GEP->getOperand(2))) {
+              if (first_index->getZExtValue() == 0) {
+                if (auto base_pointer =
+                        dyn_cast<AllocaInst>(GEP->getOperand(0))) {
+                  auto base_pointer_offset_it =
+                      stack_offset_map.find(base_pointer);
+                  if (base_pointer_offset_it != stack_offset_map.end()) {
+
+                    auto base_pointer_offset = base_pointer_offset_it->second;
+                    auto second_index_const_value =
+                        second_index->getZExtValue();
+                    in[{GEP, true}] = {1, base_pointer_offset +
+                                              second_index_const_value};
+                    // break;
+                    // in[{GEP, true}] = {}
+                  } else {
+                    // std::cout << "failed on instruction " << GEP
+                    //           << " because base pointer offset not in map\n";
+                    in[{GEP, true}] = {0, 0};
+                  }
+                } else {
+                  // std::cout << "failed on instruction " << GEP
+                  //           << " because operand 0 is not an alloca\n";
+                  in[{GEP, true}] = {0, 0};
+                }
+                // auto base_pointer_offset =
+                // stack_offset_map.find(base_pointer); auto
+              } else {
+                // std::cout << "failed on instruction " << GEP
+                //           << " because first index neq 0\n";
+                in[{GEP, true}] = {0, 0};
+              }
+            } else {
+              // std::cout
+              //     << "failed on instruction " << GEP
+              //     << "because couldn't cast second operand to ConstantInt\n";
+              in[{GEP, true}] = {0, 0};
+            }
+          } else {
+            // std::cout << "failed on instruction " << GEP
+            //           << "because couldn't cast first operand to
+            //           ConstantInt\n";
+            in[{GEP, true}] = {0, 0};
+          }
+        } else {
+          // std::cout << "failed on instruction " << GEP
+          //           << "because number of operands neq 3\n";
+          in[{GEP, true}] = {0, 0};
+        }
+
+        // if ((GEP->getNumOperands() == 3) &&
+        //     (auto *first_index = dyn_cast<ConstantInt>(GEP->getOperand(1)))
+        //     && (auto *second_index =
+        //     dyn_cast<ConstantInt>(GEP->getOperand(2)))) {
+        // }
+
+        // llvm::outs() << "found a gep with " << num_operands << "!\n";
+      } break;
+
+      case Instruction::Call: {
+        auto *CI = dyn_cast<CallInst>(&I);
+        assert(CI && "Not a Call inst?");
+
+        llvm::outs() << "found an call!\n";
+      } break;
+
+      case Instruction::IntToPtr: {
+        auto *IPI = dyn_cast<IntToPtrInst>(&I);
+        assert(IPI && "Not a IntToPtrInst?");
+        llvm::outs() << "found an inttoptr!\n";
+        break;
+      }
+
+      case Instruction::Ret: {
+        auto *RI = dyn_cast<ReturnInst>(&I);
+        assert(RI && "not a return inst?");
+        llvm::outs() << "found a ret!\n";
+      } break;
+
+      default: {
+        if (isTypeWithPointers(I.getType())) {
+          LLVM_DEBUG(errs() << "Unhandled instruction: " << I << "\n");
+          if (ClAssociateMissingMetadata)
+            if (ClAssociateOmnivalidMetadataWhenMissing)
+              associateOmnivalidMetadata(&I);
+            else
+              associateInvalidMetadata(&I);
+          else
+            assert(0 && "Instruction generating Pointer is not handled");
+        }
+      } break;
+      }
+    }
+
+    std::cout << "currently on BB: " << BB << "\n";
+    for (auto &[key, value] : in) {
+      auto s = get<0>(key);
+      llvm::outs() << "variable: " << *s << " with flag: " << get<1>(key)
+                   << " has value: " << get<0>(value)
+                   << "  with added data: " << get<1>(value) << "\n";
+    }
 
     // compare previous out[bb] and new out[bb]; if changed, continue worklist
   }

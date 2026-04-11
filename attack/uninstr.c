@@ -35,7 +35,7 @@ void log_metadata_changes(__shadow_softboundcets_metadata_t *entry, int after_at
 }
 
 
-void overwrite_metadata_map(void *addr_of_ptr, int array_len)
+void overwrite_metadata_map(const void *addr_of_ptr, int array_len)
 {
     // get entry for `addr_of_ptr` from metadata table
     size_t ptr = (size_t)addr_of_ptr;

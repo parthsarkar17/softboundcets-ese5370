@@ -16,9 +16,9 @@ target triple = "x86_64-unknown-linux-gnu"
 ; Function Attrs: noinline nounwind optnone uwtable
 define dso_local i32 @main() #0 {
   %1 = alloca i32, align 4
-  %2 = alloca [4 x i32], align 16          %2 --> fp
+  %2 = alloca [4 x i32], align 16
   %3 = alloca [4 x i32], align 16
-  %4 = alloca [1 x i32*], align 8          %4 --> fp + 16
+  %4 = alloca [1 x i32*], align 8
   %5 = alloca i32*, align 8
   %6 = alloca i32, align 4
   %7 = alloca [2 x i32*], align 16
@@ -29,14 +29,14 @@ define dso_local i32 @main() #0 {
   call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 16 %10, i8* align 16 bitcast ([4 x i32]* @__const.main.array1 to i8*), i64 16, i1 false)
   %11 = bitcast [4 x i32]* %3 to i8*
   call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 16 %11, i8* align 16 bitcast ([4 x i32]* @__const.main.array2 to i8*), i64 16, i1 false)
-  %12 = getelementptr inbounds [1 x i32*], [1 x i32*]* %4, i64 0, i64 0          %12 --> fp + 16
-  %13 = getelementptr inbounds [4 x i32], [4 x i32]* %2, i64 0, i64 0            %13 --> fp 
-  store i32* %13, i32** %12, align 8                                             *%12 --> fp   
-  %14 = getelementptr inbounds [1 x i32*], [1 x i32*]* %4, i64 0, i64 0          %14 --> fp + 16
-  %15 = bitcast i32** %14 to i8*                                                 %15 --> fp + 16
+  %12 = getelementptr inbounds [1 x i32*], [1 x i32*]* %4, i64 0, i64 0
+  %13 = getelementptr inbounds [4 x i32], [4 x i32]* %2, i64 0, i64 0
+  store i32* %13, i32** %12, align 8
+  %14 = getelementptr inbounds [1 x i32*], [1 x i32*]* %4, i64 0, i64 0
+  %15 = bitcast i32** %14 to i8*
   call void @overwrite_metadata_map(i8* %15, i32 4)
-  %16 = getelementptr inbounds [1 x i32*], [1 x i32*]* %4, i64 0, i64 0           %16 --> fp + 16
-  %17 = load i32*, i32** %16, align 8                                           %17 --> // here, problem; don't have *%16 stored
+  %16 = getelementptr inbounds [1 x i32*], [1 x i32*]* %4, i64 0, i64 0
+  %17 = load i32*, i32** %16, align 8
   store i32* %17, i32** %5, align 8
   %18 = load i32*, i32** %5, align 8
   %19 = getelementptr inbounds i32, i32* %18, i64 4
@@ -141,7 +141,7 @@ attributes #4 = { noreturn nounwind }
 !llvm.ident = !{!1}
 
 !0 = !{i32 1, !"wchar_size", i32 4}
-!1 = !{!"clang version 12.0.1 (git@github.com:parthsarkar17/softboundcets-ese5370.git de5fa15ccb0fe927b0ccac18cfb91b220d4ccb3e)"}
+!1 = !{!"clang version 12.0.1 (git@github.com:parthsarkar17/softboundcets-ese5370.git 0fa305e94b19c2c732a9ce3229d09dd95094b0ae)"}
 !2 = distinct !{!2, !3}
 !3 = !{!"llvm.loop.mustprogress"}
 !4 = distinct !{!4, !3}
