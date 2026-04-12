@@ -4954,17 +4954,40 @@ void SoftBoundCETSPass::pointerAliasing(Function &F) {
         llvm::Value *valStored = S->getValueOperand();
         llvm::Value *locStored = S->getPointerOperand();
 
+        std::pair<unsigned long, unsigned long> valStoredMapping;
         auto valStoredMappingIt = in.find({valStored, true});
         if (valStoredMappingIt != in.end()) {
           // thing to store exists in map (i.e. storing a pointer); so, need
-          // to flow the abstract lattice value into the dereference of S
-          auto valStoredMapping = valStoredMappingIt->second;
-          in[{locStored, false}] = valStoredMapping;
+          // to flow the abstract lattice value into the dereference of pointer
+          valStoredMapping = valStoredMappingIt->second;
+          // in[{locStored, false}] = valStoredMapping;
         } else {
           // if thing to store doesn't exist in map, we need to record that
-          // the dereference of S stores TOP
-          in[{locStored, false}] = {0, 0};
+          // the dereference of this pointer stores TOP
+          // in[{locStored, false}] = {0, 0};
+          valStoredMapping = {0, 0};
         }
+
+        // go through all dereferences to the same place, and update them too
+        auto locStoredMappingIt = in.find({locStored, true});
+        if (locStoredMappingIt != in.end()) {
+          auto locStoredMapping = locStoredMappingIt->second;
+          auto first = get<0>(locStoredMapping);
+          if (first == 1) {
+            auto offset = get<1>(locStoredMapping);
+            for (auto &[key, value] : in) {
+              auto key_first = get<0>(key);
+              auto key_second = get<1>(key);
+              auto value_first = get<0>(value);
+              auto value_second = get<1>(value);
+              if ((key_second == true) && (value_first == 1) &&
+                  (value_second == offset)) {
+                in[{key_first, false}] = valStoredMapping;
+              }
+            }
+          }
+        }
+
       } break;
 
       case Instruction::Load: {
@@ -5063,13 +5086,6 @@ void SoftBoundCETSPass::pointerAliasing(Function &F) {
           in[{GEP, true}] = {0, 0};
         }
 
-        // if ((GEP->getNumOperands() == 3) &&
-        //     (auto *first_index = dyn_cast<ConstantInt>(GEP->getOperand(1)))
-        //     && (auto *second_index =
-        //     dyn_cast<ConstantInt>(GEP->getOperand(2)))) {
-        // }
-
-        // llvm::outs() << "found a gep with " << num_operands << "!\n";
       } break;
 
       case Instruction::Call: {
@@ -5118,6 +5134,361 @@ void SoftBoundCETSPass::pointerAliasing(Function &F) {
     // compare previous out[bb] and new out[bb]; if changed, continue worklist
   }
 }
+
+// -------------------------------------------------------------------------
+// BEGIN STACK POINTER ANALYSIS
+// -------------------------------------------------------------------------
+
+class AbstractLatticeValue {
+private:
+  std::pair<u_int8_t, u_int64_t> t;
+
+public:
+  bool isTop() const { return this->t.first == 0; }
+  bool isFPOffset() const { return this->t.first == 1; }
+  bool isBottom() const { return this->t.first == 2; }
+
+  u_int64_t getFPOffset() const {
+    assert(this->t.first == 1);
+    return this->t.second;
+  }
+
+  /// Create an object that represents no precision at all
+  static AbstractLatticeValue makeTop() {
+    AbstractLatticeValue v;
+    v.t = {0, 0};
+    return v;
+  }
+
+  /// Create an object that represents a specific frame pointer offset
+  static AbstractLatticeValue makeFPOffset(u_int64_t ofst) {
+    AbstractLatticeValue v;
+    v.t = {1, ofst};
+    return v;
+  }
+
+  /// Create an object representing the most precision (i.e. can assign
+  /// arbitrary frame pointer values, as desired)
+  static AbstractLatticeValue makeBottom() {
+    AbstractLatticeValue v;
+    v.t = {2, 0};
+    return v;
+  }
+
+  bool equals(const AbstractLatticeValue &other) const {
+    if (other.isTop() && this->isTop()) {
+      return true;
+    } else if (other.isBottom() && this->isBottom()) {
+      return true;
+    } else if (other.isFPOffset() && this->isFPOffset()) {
+      return other.getFPOffset() == this->getFPOffset();
+    } else {
+      return false;
+    }
+  }
+
+  AbstractLatticeValue merge(const AbstractLatticeValue &other) const {
+
+    if (this->isTop() || other.isTop()) {
+      return AbstractLatticeValue::makeTop();
+    } else if (this->isBottom()) {
+      return other;
+    } else if (other.isBottom()) {
+      return *this;
+    } else if (this->isFPOffset() && other.isFPOffset()) {
+      if (this->getFPOffset() == other.getFPOffset()) {
+        return other;
+      } else {
+        // if offsets diverge, then lose all precision
+        return AbstractLatticeValue::makeTop();
+      }
+    } else {
+      // unreachable!()
+      assert(false);
+    }
+  }
+};
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              const AbstractLatticeValue &alv) {
+  if (alv.isTop()) {
+    os << "Top";
+  } else if (alv.isBottom()) {
+    os << "Bottom";
+  } else if (alv.isFPOffset()) {
+    os << "Constant(" << alv.getFPOffset() << ")";
+  } else if (alv.isFPOffset()) {
+    os << "FPOffset(" << alv.getFPOffset() << ")";
+  }
+  return os;
+}
+
+class Variable2ALV {
+
+private:
+  DenseMap<llvm::Value *, AbstractLatticeValue> t;
+
+public:
+  static Variable2ALV initialize(llvm::Function &F) {
+    Variable2ALV v2avl_obj;
+    DenseMap<llvm::Value *, AbstractLatticeValue> v2avl_map;
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        if (isTypeWithPointers(I.getType())) {
+          llvm::Value *V = &I;
+          v2avl_map[V] = AbstractLatticeValue::makeBottom();
+        }
+      }
+    }
+    v2avl_obj.t = v2avl_map;
+    return v2avl_obj;
+  }
+
+  void print_v2alv() const {
+    llvm::outs() << "{\n";
+    for (auto &[key, value] : this->t) {
+      llvm::outs() << "    insn: " << *key << " with abstract value: " << value
+                   << "\n";
+    }
+    llvm::outs() << "}\n";
+  }
+
+  Variable2ALV join(const Variable2ALV &other) const {
+    Variable2ALV new_v2alv;
+    DenseMap<llvm::Value *, AbstractLatticeValue> new_v2alv_map;
+
+    auto &other_map = other.t;
+    // go through one of the maps, and merge each binding with the analogous
+    // binding found in the other map
+    for (auto &[this_key, this_value] : this->t) {
+      auto other_value_iterator = other_map.find(this_key);
+      if (other_value_iterator != other_map.end()) {
+        auto &other_value = other_value_iterator->second;
+        auto new_value = this_value.merge(other_value);
+        new_v2alv_map[this_key] = new_value;
+      } else {
+        // the two maps should bind the same keys; unreachable
+        assert(false);
+      }
+    }
+    new_v2alv.t = new_v2alv_map;
+    return new_v2alv;
+  }
+
+  /// Compares two maps from variables to abstract lattice values. Returns true
+  /// if and only if every binding in one is present in the other and if the
+  /// sizes are equal
+  bool is_identical(const Variable2ALV &other) const {
+    for (auto &[this_key, this_value] : this->t) {
+      auto t_binding_in_o_it = other.t.find(this_key);
+      if (t_binding_in_o_it != other.t.end()) {
+        auto t_binding_in_o = t_binding_in_o_it->second;
+        if (!(this_value.equals(t_binding_in_o))) {
+          return false;
+        }
+      }
+    }
+    return (this->t.size() == other.t.size());
+  }
+
+  /// In-place modify a Var2ALV map to deal with an instruction
+  void transfer_insn(Instruction &insn,
+                     DenseMap<AllocaInst *, u_int64_t> &alloca2offset) {
+    switch (insn.getOpcode()) {
+    case Instruction::Alloca: {
+      auto *alloca_insn = dyn_cast<AllocaInst>(&insn);
+      assert(alloca_insn && "Not an Alloca inst?");
+      auto &map = this->t;
+      if (alloca_insn->isStaticAlloca()) {
+        auto fp_offset_iterator = alloca2offset.find(alloca_insn);
+        if (fp_offset_iterator != alloca2offset.end()) {
+          u_int64_t fp_offset = fp_offset_iterator->second;
+          map[&insn] = AbstractLatticeValue::makeFPOffset(fp_offset);
+        } else {
+          // should have inserted every static alloca into map; unreachable
+          assert(false);
+        }
+      } else {
+        map[&insn] = AbstractLatticeValue::makeTop();
+      }
+    } break;
+
+    case Instruction::GetElementPtr: {
+      auto *gep_insn = dyn_cast<GetElementPtrInst>(&insn);
+      assert(gep_insn && "Not a GEP inst?");
+      auto &map = this->t;
+      if (gep_insn->getNumOperands() == 3) {
+        if (auto *first_index =
+                dyn_cast<ConstantInt>(gep_insn->getOperand(1))) {
+          if (auto *second_index =
+                  dyn_cast<ConstantInt>(gep_insn->getOperand(2))) {
+            if (first_index->getZExtValue() == 0) {
+              if (auto base_pointer =
+                      dyn_cast<AllocaInst>(gep_insn->getOperand(0))) {
+                auto base_pointer_offset_it = alloca2offset.find(base_pointer);
+                if (base_pointer_offset_it != alloca2offset.end()) {
+                  auto base_pointer_offset = base_pointer_offset_it->second;
+                  auto second_index_const_value = second_index->getZExtValue();
+                  map[&insn] = AbstractLatticeValue::makeFPOffset(
+                      base_pointer_offset + second_index_const_value);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      // remove all precision if the second index is a variable, for example
+      map[&insn] = AbstractLatticeValue::makeTop();
+    } break;
+
+    case BitCastInst::BitCast: {
+      auto *bc_insn = dyn_cast<BitCastInst>(&insn);
+      assert(bc_insn && "Not a BitCast inst?");
+
+      // here, we simply want to flow the abstract value associated with the
+      // operand (if it exists) into the result register
+      auto &map = this->t;
+      if (isTypeWithPointers(bc_insn->getType())) {
+        llvm::Value *operand = bc_insn->getOperand(0);
+        auto operand_alv_iterator = map.find(operand);
+        if (operand_alv_iterator != map.end()) {
+          auto operand_alv = operand_alv_iterator->second;
+          map[&insn] = operand_alv;
+          break;
+        } else {
+          map[&insn] = AbstractLatticeValue::makeTop();
+        }
+      }
+    } break;
+
+    default: {
+      if (isTypeWithPointers(insn.getType())) {
+        auto &map = this->t;
+
+        // lose all precision for every other pointer assignment (e.g. result
+        // of malloc call)
+        map[&insn] = AbstractLatticeValue::makeTop();
+      }
+    } break;
+    }
+  }
+};
+
+class StackPointerAnalysis {
+private:
+  DenseMap<llvm::BasicBlock *, Variable2ALV> ins;
+  DenseMap<llvm::BasicBlock *, Variable2ALV> outs;
+
+  /// Create a map from static alloca instructions to offsets from the frame
+  /// pointer
+  static DenseMap<llvm::AllocaInst *, u_int64_t>
+  initialize_alloca_offsets(Function &F) {
+    DenseMap<AllocaInst *, unsigned long> stack_offset_map;
+    u_int64_t offset = 0;
+    auto DL = F.getParent()->getDataLayout();
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        if (auto *AI = dyn_cast<AllocaInst>(&I)) {
+          if (AI->isStaticAlloca()) {
+            u_int64_t size_bytes = *AI->getAllocationSizeInBits(DL) / 8;
+            bool is_array_alloc = AI->isArrayAllocation();
+            PointerType *t = AI->getType();
+            stack_offset_map[AI] = offset;
+            offset = offset + size_bytes;
+          }
+        }
+      }
+    }
+    return stack_offset_map;
+  }
+
+public:
+  /// Create an empty object that represents the analysis before the worklist
+  /// algorithm is run
+  static StackPointerAnalysis create_empty_analysis(Function &F) {
+    StackPointerAnalysis v;
+    DenseMap<llvm::BasicBlock *, Variable2ALV> ins, outs;
+    for (auto &BB : F) {
+      v.ins[&BB] = Variable2ALV::initialize(F);
+      v.outs[&BB] = Variable2ALV::initialize(F);
+    }
+    return v;
+  }
+
+  /// Modifies the (presumably empty) object in-place to produce ins/outs
+  /// representing a flow-sensitive analysis of pointer variables that point
+  /// to specific locations on the stack
+  void perform_analysis(Function &F) {
+
+    // map every static alloca instruction to offsets from the frame pointer
+    auto alloca2offset = StackPointerAnalysis::initialize_alloca_offsets(F);
+
+    // initialize the worklist queue
+    std::queue<BasicBlock *> BBWorklist;
+    auto *BB = &F.getEntryBlock();
+    BBWorklist.push(BB);
+
+    // worklist algorithm
+    while (BBWorklist.size() != 0) {
+
+      // get head of queue
+      BB = BBWorklist.front();
+      BBWorklist.pop();
+
+      // perform JOIN on outputs of predecessors of this BB
+      auto joined = Variable2ALV::initialize(F);
+      for (auto it = pred_begin(BB), et = pred_end(BB); it != et; ++it) {
+        llvm::BasicBlock *Pred = *it;
+        auto pred_out = this->outs[Pred];
+        auto new_map = joined.join(pred_out);
+        joined = new_map;
+      }
+
+      this->ins[BB] = joined;
+
+      // perform transfer function
+      for (auto &I : *BB) {
+        joined.transfer_insn(I, alloca2offset);
+      }
+
+      // add successors iff previous output of transfer function is not
+      // identical to the one just produced
+      auto &prev_out = this->outs[BB];
+      if (!joined.is_identical(prev_out)) {
+        for (auto SI = succ_begin(BB), SE = succ_end(BB); SI != SE; ++SI) {
+          BasicBlock *NextBB = *SI;
+          BBWorklist.push(NextBB);
+        }
+      }
+      this->outs[BB] = joined;
+    }
+  }
+
+  void print_analysis(Function &F) const {
+    for (auto &BB : F) {
+      auto bb_in_it = this->ins.find(&BB);
+      auto bb_out_it = this->outs.find(&BB);
+      if ((bb_in_it != this->ins.end()) && (bb_out_it != this->outs.end())) {
+        auto &bb_in = bb_in_it->second;
+        auto &bb_out = bb_out_it->second;
+
+        bb_in.print_v2alv();
+        llvm::outs() << "Basic block :" << BB << "\n";
+        bb_out.print_v2alv();
+        llvm::outs() << "\n\n\n\n";
+
+      } else {
+        // all BBs should be mapped
+        assert(false);
+      }
+    }
+  }
+};
+
+// -------------------------------------------------------------------------
+// END STACK POINTER ANALYSIS
+// -------------------------------------------------------------------------
 
 void SoftBoundCETSPass::gatherBaseBoundPass1(Function &F) {
   // Scan over the pointer arguments and introduce metadata loads from the
@@ -5624,7 +5995,8 @@ inline void SoftBoundCETSPass::addMetadataToGlobal(GlobalVariable &GV) {
   }
 }
 
-// get the index into the compile-time metadata vector of an aggregate structure
+// get the index into the compile-time metadata vector of an aggregate
+// structure
 size_t SoftBoundCETSPass::flattenAggregateIndices(Type *Ty,
                                                   ArrayRef<unsigned> Indices) {
   switch (Ty->getTypeID()) {
@@ -5675,9 +6047,9 @@ size_t SoftBoundCETSPass::flattenAggregateIndices(Type *Ty,
  * Traverses an aggregate type (`pointee_type`) recursively to find nested
  * pointer types. For each contained pointer type, a GEP value is generated
  * using the base (`pointer`). Returns a list of pointer values in the range
- * GEP(pointer, 0) to GEP(pointer, 1). For example the pointee type {{i64, ptr},
- * [2 x ptr]} and pointer p would result in [GEP(p, 0, 0, 1), GEP(p, 0, 1, 0),
- * GEP(p, 0, 1, 1)]
+ * GEP(pointer, 0) to GEP(pointer, 1). For example the pointee type {{i64,
+ * ptr}, [2 x ptr]} and pointer p would result in [GEP(p, 0, 0, 1), GEP(p,
+ * 0, 1, 0), GEP(p, 0, 1, 1)]
  */
 void SoftBoundCETSPass::generateAggregateGEPs(Value *Ptr, Type *PointeeTy,
                                               Instruction *InsertAt,
@@ -5936,12 +6308,12 @@ SoftBoundCETSPass::packMetadataArray(ArrayRef<Value *> SingleMetadataVals,
 // just like getConstantExprBaseBound recursively
 // 1. handle ConstantData
 // a) ConstantPointerNull -> invalid metadata by createDummyMetadata
-// b) Undef -> invalid metadata by createDummyMetadata if it contains pointers
-// c) ConstantAggregateZero -> invalid metadata by createDummyMetadata if it
-// contains pointers
+// b) Undef -> invalid metadata by createDummyMetadata if it contains
+// pointers c) ConstantAggregateZero -> invalid metadata by
+// createDummyMetadata if it contains pointers
 // 2. handle ConstantAggregate
-// a) ConstantArray -> call getConstantExprBaseBound on one element, push times
-// Numelement on metadata array b) ConstantStruct -> call
+// a) ConstantArray -> call getConstantExprBaseBound on one element, push
+// times Numelement on metadata array b) ConstantStruct -> call
 // getConstantExprBaseBound on each subelement c) ConstantVector -> if it
 // contains pointers, create metadata vector with invalid metadata
 // 3. Globals
@@ -6527,12 +6899,18 @@ bool SoftBoundCETSPass::runOnModule(Module &M) {
 
     identifyOriginalInst(&F);
 
+    // pointerAliasing(F);
+
+    // perform stack pointer analysis
+    auto spa = StackPointerAnalysis::create_empty_analysis(F);
+    spa.perform_analysis(F);
+    spa.print_analysis(F);
+
     //
     // Iterate over all basic block and then each insn within a basic
     // block We make two passes over the IR for base and bound
     // propagation and one pass for dereference checks
     //
-    pointerAliasing(F);
     gatherBaseBoundPass1(F);
     gatherBaseBoundPass2(F);
     addDereferenceChecks(&F);
