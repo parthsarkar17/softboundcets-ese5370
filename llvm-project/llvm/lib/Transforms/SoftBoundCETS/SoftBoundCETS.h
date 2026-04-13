@@ -126,6 +126,8 @@ struct SoftBoundCETSMetadata {
   Value *Lock;
 };
 
+class StackPointerAnalysis;
+
 class SoftBoundCETSPass : public ModulePass {
 
 private:
@@ -271,7 +273,7 @@ private:
   bool isAllocaPresent(Function *);
   void gatherBaseBoundPass1(Function &F);
   void gatherBaseBoundPass2(Function &F);
-  void addDereferenceChecks(Function *);
+  void addDereferenceChecks(Function *func, StackPointerAnalysis &spa);
   bool checkIfFunctionOfInterest(Function *);
   bool isFunctionNotToInstrument(const StringRef &str);
   bool isIgnorableLLVMIntrinsic(const StringRef &str);
@@ -335,7 +337,8 @@ private:
 
   bool checkBitcastShrinksBounds(Instruction *);
   bool isStructOperand(Value *);
-  void addSpatialChecks(Instruction *, std::map<Value *, int> &);
+  void addSpatialChecks(Instruction *, std::map<Value *, int> &,
+                        StackPointerAnalysis &);
   void addTemporalChecks(Instruction *, std::map<Value *, int> &,
                          std::map<Value *, int> &);
 
