@@ -56,24 +56,34 @@ Proof.
     - inversion L; destruct x; subst; inversion J1; inversion J2; subst; auto. 
 Qed.
 
-(** For the purposes of stack points-to analysis, we need only care about instructions that produce pointers. This is the exhaustive list. *)
+(** For the purposes of stack points-to analysis, we need only care about instructions that may produce pointers. Each such instruction falls into one of the following categories. *)
 Inductive llvm_instruction : Type :=
-  | alloca (base_fp_offset : nat)
-  | bitcast
-  | get_element_pointer (base_fp_offset : nat) (offset_into_buffer : nat)
-  | other.
+  | static_alloca (base_fp_offset : nat)                    (* static alloca insns always have an offset from frame pointer *)
+  | bitcast (a : alv)                                       (* the ALV here refers to the ALV mapped to the bitcast's operand variable *)
+  | get_element_pointer (base : alv) (base_offset : alv)    (* the ALVs here refer to those mapped to the base and offset variables for the GEP instruction *)
+  | other.                                                  (* represents every other instruction that assigns a variable *)
+  
+(** For each of the pointer-producing instructions, the following propositions specify how the variable being assigned gets its abstract lattice value.
 
-(** For each of the pointer-producing instructions, the following propositions specify how the variable being assigned gets its abstract lattice value *)
+  We can read a proposition of the form `flow_rule insn a b` as: 
+    " after performing instruction `v = insn`, the initial mapping v-->a will now be v-->b " 
+ *)
 Inductive flow_rule : llvm_instruction -> alv -> alv -> Prop :=
-  | alloca_rule :              forall (a : alv) (ofst : nat),      flow_rule (alloca ofst) a (FPOffset ofst)
-  | bitcast_rule :             forall (a : alv),                   flow_rule bitcast a a
-  | get_element_pointer_rule : forall (a : alv) (base buf : nat),  flow_rule (get_element_pointer base buf) a (FPOffset (base + buf))
-  | other_rule :               forall (a : alv),                   flow_rule (other) a (Top).
+  | alloca_rule :             forall (prev : alv) (ofst : nat),               flow_rule (static_alloca ofst) prev (FPOffset ofst)
+  | bitcast_rule :            forall (prev bc_operand : alv)   ,              flow_rule (bitcast bc_operand) prev bc_operand
+  | gep_rule_both_eq_ofst  :  forall (prev : alv) (base_ofst buf_ofst : nat), 
+                                                                              flow_rule (get_element_pointer (FPOffset base_ofst) (FPOffset buf_ofst)) prev (FPOffset (base_ofst + buf_ofst))
+  | gep_rule_one_neq_ofst :   forall (prev base_operand buf_operand : alv) (base_ofst buf_ofst : nat), 
+                                base_operand <> FPOffset(base_ofst) \/ buf_operand <> FPOffset(buf_ofst) 
+                                                                          ->  flow_rule (get_element_pointer base_operand buf_operand) prev Top                                                                  
+  | other_rule :              forall (prev : alv),                            flow_rule (other) prev (Top).
+
 
 Theorem flow_rules_are_monotonic : forall (x y z a b : alv) (insn : llvm_instruction),
     leq x y -> flow_rule insn x a /\ flow_rule insn x b -> leq a b.
 Proof.
-  intros x y z a b insn L [F1 F2]. 
-  destruct insn; inversion L; inversion F1; inversion F2; subst; auto.
+  intros x y z a b insn L [F1 F2]. destruct insn;
+  try (inversion L; inversion F1; inversion F2; subst; auto); 
+  destruct b; auto.
 Qed.     
 
