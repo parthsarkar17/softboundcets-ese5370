@@ -1,27 +1,96 @@
-From Stdlib Require Import Arith. Import Nat.
+From Stdlib Require Import Arith. Import Nat. Import Bool.
+From Stdlib Require Import Lia.
 
 (** These are the "abstract lattice values" (ALVs) that each variable will be mapped to during/after the analysis, at each program point. *)
 Inductive alv : Type :=
-  | Top
-  | FPOffset(n : nat)
-  | Bottom.
+  | top
+  | fpoffset (base ptr bound size: nat)
+  | bottom.
 
-(** We need to specify an ordering on the abstract values that each variable `v` can take on during execution. 
-  Fundamentally, this ordering represents how specific our analysis can be, without losing correctness.
-  In particular, `leq x y` if and only if the abstract value `x` tells us MORE information than `y`.
-  As a concrete example, it is better (i.e. the analysis tells us more) if a variable `v` maps to a particular offset
-  from the stack, versus if where `v` points to cannot be determined (TOP). Similarly, `v --> BOTTOM` is extremely desirable
-  because it means we can assume anything we want about where `v` points to. If the analysis is implemented correctly, however,
-  this mapping is sadly unlikely to arise in practice.
-*)
+
 Inductive leq : alv -> alv -> Prop :=
-  | bot_leq_bot :                     leq Bottom Bottom
-  | bot_leq_ofst :  forall n : nat,   leq Top (FPOffset n)
-  | bot_leq_top :                     leq Bottom Top
-  | ofst_leq_ofst : forall n m : nat, leq (FPOffset n) (FPOffset m)
-  | ofst_leq_top :  forall n : nat,   leq (FPOffset n) Top
-  | top_leq_top :                     leq Top Top.
+  | bot_leq_all    :   forall a : alv,   leq bottom a
+  | all_leq_top    :   forall a : alv,   leq a top
+  | ofst_leq_ofst  :   forall ba p bo s1 s2 : nat, s1 <= s2 -> leq (fpoffset ba p bo s1) (fpoffset ba p bo s2).
+  
+  
+Definition join (a1 a2 : alv) : alv :=
+  match a1 with
+  | top => top
+  | bottom => a2
+  | fpoffset ba1 p1 bo1 s1 => match a2 with
+    | top => top
+    | bottom => a1
+    | fpoffset ba2 p2 bo2 s2 => 
+        if (ba1 =? ba2) && (p1 =? p2) && (bo1 =? bo2) then
+          fpoffset ba1 p1 bo1 (Nat.max s1 s2)
+        else top
+    end
+  end.
 
+Theorem join_commutative : forall a b : alv, join a b = join b a.
+Proof.
+  intros. destruct a; destruct b; try reflexivity. simpl.
+  replace (base =? base0) with (base0 =? base).
+  replace (ptr =? ptr0) with (ptr0 =? ptr).
+  replace (bound =? bound0) with (bound0 =? bound).
+  destruct ((base0 =? base) && (ptr0 =? ptr) && (bound0 =? bound)) eqn:B.
+  - destruct (base0 =? base) eqn:B1;
+    destruct (ptr0 =? ptr) eqn:B2;
+    destruct (bound0 =? bound) eqn:B3; try discriminate.
+    + apply Nat.eqb_eq in B1.
+      apply Nat.eqb_eq in B2.
+      apply Nat.eqb_eq in B3.
+      rewrite B1. rewrite B2. rewrite B3.
+      replace (max size size0) with (max size0 size).
+      { reflexivity. }
+      { apply Nat.max_comm. }
+  - reflexivity.
+  - apply eqb_sym.
+  - apply eqb_sym.
+  - apply eqb_sym.
+Qed.
+  
+Hint Constructors leq : core.
+
+
+Theorem join_is_monotonic : forall x y z: alv, 
+    (leq x y -> leq (join x z) (join y z))
+ /\ (leq y z -> leq (join x y) (join x z)).
+Proof.
+  intros. split; intros L; inversion L; subst.
+  - destruct z; destruct y; simpl; auto.
+    destruct ((base0 =? base) && (ptr0 =? ptr) && (bound0 =? bound)) eqn:B; auto.
+    destruct (base0 =? base) eqn:B1;
+    destruct (ptr0 =? ptr) eqn:B2;
+    destruct (bound0 =? bound) eqn:B3; try discriminate.
+    apply Nat.eqb_eq in B1.
+    apply Nat.eqb_eq in B2.
+    apply Nat.eqb_eq in B3.
+    rewrite B1. rewrite B2. rewrite B3.
+    apply ofst_leq_ofst.
+    lia.
+   - simpl. auto.
+   - destruct z; simpl; auto.
+     destruct ((ba =? base) && (p =? ptr) && (bo =? bound)) eqn:B.
+     destruct (ba =? base) eqn:B1;
+     destruct (p =? ptr) eqn:B2;
+     destruct (bo =? bound) eqn:B3; try discriminate.
+     + apply ofst_leq_ofst. lia.
+     + apply all_leq_top.
+   - destruct x; destruct z; simpl; auto.
+     destruct ((base =? base0) && (ptr =? ptr0) && (bound =? bound0)) eqn:B; auto.
+     apply ofst_leq_ofst. lia.
+   - replace (join x top) with (join top x).
+     + simpl. auto.
+     + destruct x; auto.
+   - destruct x; simpl; auto.
+     destruct ((base =? ba) && (ptr =? p) && (bound =? bo)) eqn:B; auto.
+     apply ofst_leq_ofst. lia.
+Qed.
+  
+
+(*
 (** Assume the following CFG:
 
             A   B
@@ -85,5 +154,5 @@ Proof.
   intros x y z a b insn L [F1 F2]. destruct insn;
   try (inversion L; inversion F1; inversion F2; subst; auto); 
   destruct b; auto.
-Qed.     
+Qed.     *)
 
