@@ -369,29 +369,62 @@ const char kSoftBoundCETSLoadShadowStackMetadataPtrFnName[] =
 
 class AbstractLatticeValue {
 private:
-  std::pair<u_int8_t, u_int64_t> t;
+  // the following fields encode the following:
+  // enum AbstractLatticeValue {
+  //  Top,
+  //  FPOffset (offset, base, bound, size)
+  //  Bottom
+  // }
+  //
+  // enum_value = 0 ==> TOP, enum_value = 2 ==> BOTTOM, enum_value 1 ==> offset,
+  // base, etc. are meaningful
+  u_int8_t enum_value;
+  u_int64_t offset;
+  u_int64_t base;
+  u_int64_t bound;
+  u_int64_t size;
 
 public:
-  bool isTop() const { return this->t.first == 0; }
-  bool isFPOffset() const { return this->t.first == 1; }
-  bool isBottom() const { return this->t.first == 2; }
+  bool isTop() const { return this->enum_value == 0; }
+  bool isFPOffset() const { return this->enum_value == 1; }
+  bool isBottom() const { return this->enum_value == 2; }
 
   u_int64_t getFPOffset() const {
-    assert(this->t.first == 1);
-    return this->t.second;
+    assert(this->enum_value == 1);
+    return this->offset;
+  }
+
+  u_int64_t getFPOffsetBase() const {
+    assert(this->enum_value == 1);
+    return this->base;
+  }
+
+  u_int64_t getFPOffsetBound() const {
+    assert(this->enum_value == 1);
+    return this->bound;
+  }
+
+  u_int64_t getFPOffsetSize() const {
+    assert(this->enum_value == 1);
+    return this->size;
   }
 
   /// Create an object that represents no precision at all
   static AbstractLatticeValue makeTop() {
     AbstractLatticeValue v;
-    v.t = {0, 0};
+    v.enum_value = 0;
     return v;
   }
 
   /// Create an object that represents a specific frame pointer offset
-  static AbstractLatticeValue makeFPOffset(u_int64_t ofst) {
+  static AbstractLatticeValue makeFPOffset(u_int64_t ofst, u_int64_t base,
+                                           u_int64_t bound, u_int64_t size) {
     AbstractLatticeValue v;
-    v.t = {1, ofst};
+    v.enum_value = 1;
+    v.offset = ofst;
+    v.base = base;
+    v.bound = bound;
+    v.size = size;
     return v;
   }
 
@@ -399,7 +432,7 @@ public:
   /// arbitrary frame pointer values, as desired)
   static AbstractLatticeValue makeBottom() {
     AbstractLatticeValue v;
-    v.t = {2, 0};
+    v.enum_value = 2;
     return v;
   }
 
@@ -409,7 +442,10 @@ public:
     } else if (other.isBottom() && this->isBottom()) {
       return true;
     } else if (other.isFPOffset() && this->isFPOffset()) {
-      return other.getFPOffset() == this->getFPOffset();
+      return ((other.getFPOffset() == this->getFPOffset()) &&
+              (other.getFPOffsetBase() == this->getFPOffsetBase()) &&
+              (other.getFPOffsetBound() == this->getFPOffsetBound()) &&
+              (other.getFPOffsetSize() == this->getFPOffsetSize()));
     } else {
       return false;
     }
@@ -417,21 +453,43 @@ public:
 
   AbstractLatticeValue merge(const AbstractLatticeValue &other) const {
 
-    if (this->isTop() || other.isTop()) {
-      return AbstractLatticeValue::makeTop();
+    if (this->isTop()) {
+      return *this;
     } else if (this->isBottom()) {
       return other;
-    } else if (other.isBottom()) {
-      return *this;
-    } else if (this->isFPOffset() && other.isFPOffset()) {
-      if (this->getFPOffset() == other.getFPOffset()) {
+    } else if (this->isFPOffset()) {
+
+      auto ba1 = this->getFPOffsetBase();
+      auto p1 = this->getFPOffset();
+      auto bo1 = this->getFPOffsetBound();
+      auto s1 = this->getFPOffsetSize();
+
+      if (other.isTop()) {
         return other;
+      } else if (other.isBottom()) {
+        return *this;
+      } else if (other.isFPOffset()) {
+
+        auto ba2 = other.getFPOffsetBase();
+        auto p2 = other.getFPOffset();
+        auto bo2 = other.getFPOffsetBound();
+        auto s2 = other.getFPOffsetSize();
+
+        if ((ba1 == ba2) && (p1 == p2) && (bo1 == bo2)) {
+          u_int64_t max_s1_s2;
+          if (s1 < s2) {
+            max_s1_s2 = s2;
+          } else {
+            max_s1_s2 = s1;
+          }
+          return AbstractLatticeValue::makeFPOffset(p1, ba1, bo1, max_s1_s2);
+        } else {
+          return AbstractLatticeValue::makeTop();
+        }
       } else {
-        // if offsets diverge, then lose all precision
-        return AbstractLatticeValue::makeTop();
+        assert(false);
       }
     } else {
-      // unreachable!()
       assert(false);
     }
   }
@@ -444,9 +502,12 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   } else if (alv.isBottom()) {
     os << "Bottom";
   } else if (alv.isFPOffset()) {
-    os << "Constant(" << alv.getFPOffset() << ")";
-  } else if (alv.isFPOffset()) {
-    os << "FPOffset(" << alv.getFPOffset() << ")";
+    auto ba = alv.getFPOffsetBase();
+    auto p = alv.getFPOffset();
+    auto bo = alv.getFPOffsetBound();
+    auto s = alv.getFPOffsetSize();
+    os << "FPOffset(" << p << " in [" << ba << ", " << bo
+       << "] with size: " << s << ")";
   }
   return os;
 }
@@ -468,6 +529,9 @@ public:
     }
   }
 
+  /// The initial map should map everything to BOTTOM; if it doesn't exist in
+  /// the map, it is never assigned as a pointer in the program, which means it
+  /// implicitly gets TOP by virtue of exclusion from the map.
   static Variable2ALV initialize(llvm::Function &F) {
     Variable2ALV v2avl_obj;
     DenseMap<llvm::Value *, AbstractLatticeValue> v2avl_map;
@@ -483,6 +547,7 @@ public:
     return v2avl_obj;
   }
 
+  /// Pretty print the variable to abstract lattice value map
   void print_v2alv() const {
     llvm::outs() << "{\n";
     for (auto &[key, value] : this->t) {
@@ -503,7 +568,8 @@ public:
       auto other_value_iterator = other_map.find(this_key);
       if (other_value_iterator != other_map.end()) {
         auto &other_value = other_value_iterator->second;
-        auto new_value = this_value.merge(other_value);
+        auto new_value =
+            this_value.merge(other_value); // commutative; see proof
         new_v2alv_map[this_key] = new_value;
       } else {
         // the two maps should bind the same keys; unreachable
@@ -531,8 +597,9 @@ public:
   }
 
   /// In-place modify a Var2ALV map to deal with an instruction
-  void transfer_insn(Instruction &insn,
+  void transfer_insn(Instruction &insn, llvm::DataLayout &DL,
                      DenseMap<AllocaInst *, u_int64_t> &alloca2offset) {
+
     switch (insn.getOpcode()) {
     case Instruction::Alloca: {
       auto *alloca_insn = dyn_cast<AllocaInst>(&insn);
@@ -542,7 +609,9 @@ public:
         auto fp_offset_iterator = alloca2offset.find(alloca_insn);
         if (fp_offset_iterator != alloca2offset.end()) {
           u_int64_t fp_offset = fp_offset_iterator->second;
-          map[&insn] = AbstractLatticeValue::makeFPOffset(fp_offset);
+          u_int64_t alloca_size = *alloca_insn->getAllocationSizeInBits(DL) / 8;
+          map[&insn] = AbstractLatticeValue::makeFPOffset(
+              fp_offset, fp_offset, (fp_offset + alloca_size), alloca_size);
         } else {
           // should have inserted every static alloca into map; unreachable
           assert(false);
@@ -555,30 +624,44 @@ public:
     case Instruction::GetElementPtr: {
       auto *gep_insn = dyn_cast<GetElementPtrInst>(&insn);
       assert(gep_insn && "Not a GEP inst?");
-      auto &map = this->t;
-      if (gep_insn->getNumOperands() == 3) {
-        if (auto *first_index =
-                dyn_cast<ConstantInt>(gep_insn->getOperand(1))) {
-          if (auto *second_index =
-                  dyn_cast<ConstantInt>(gep_insn->getOperand(2))) {
-            if (first_index->getZExtValue() == 0) {
-              if (auto base_pointer =
-                      dyn_cast<AllocaInst>(gep_insn->getOperand(0))) {
-                auto base_pointer_offset_it = alloca2offset.find(base_pointer);
-                if (base_pointer_offset_it != alloca2offset.end()) {
-                  auto base_pointer_offset = base_pointer_offset_it->second;
-                  auto second_index_const_value = second_index->getZExtValue();
-                  map[&insn] = AbstractLatticeValue::makeFPOffset(
-                      base_pointer_offset + second_index_const_value);
-                  break;
-                }
-              }
+
+      auto &v2alv_map = this->t;
+      APInt gep_offset_ap(64, 0);
+      bool is_constant = gep_insn->accumulateConstantOffset(DL, gep_offset_ap);
+
+      if (is_constant) {
+        uint64_t gep_offset = gep_offset_ap.getZExtValue();
+        auto base_ptr = gep_insn->getOperand(0);
+        auto base_ptr_binding_iter = v2alv_map.find(base_ptr);
+        if (base_ptr_binding_iter != v2alv_map.end()) {
+          auto &base_ptr_alv = base_ptr_binding_iter->second;
+          if (base_ptr_alv.isTop()) {
+            v2alv_map[&insn] = AbstractLatticeValue::makeTop();
+          } else if (base_ptr_alv.isBottom()) {
+            v2alv_map[&insn] = AbstractLatticeValue::makeBottom();
+          } else if (base_ptr_alv.isFPOffset()) {
+            auto ba = base_ptr_alv.getFPOffsetBase();
+            auto p = base_ptr_alv.getFPOffset();
+            auto bo = base_ptr_alv.getFPOffsetBound();
+
+            if (gep_insn->getType()->isPointerTy()) {
+              auto *pointee = gep_insn->getType()->getContainedType(0);
+              auto new_type_size = DL.getTypeAllocSize(pointee).getFixedValue();
+              auto new_offset = AbstractLatticeValue::makeFPOffset(
+                  p + gep_offset, ba, bo, new_type_size);
+              v2alv_map[&insn] = new_offset;
+            } else {
+              assert(false);
             }
+          } else {
+            assert(false);
           }
+        } else {
+          v2alv_map[&insn] = AbstractLatticeValue::makeTop();
         }
+      } else {
+        v2alv_map[&insn] = AbstractLatticeValue::makeTop();
       }
-      // remove all precision if the second index is a variable, for example
-      map[&insn] = AbstractLatticeValue::makeTop();
     } break;
 
     case BitCastInst::BitCast: {
@@ -588,16 +671,39 @@ public:
       // here, we simply want to flow the abstract value associated with the
       // operand (if it exists) into the result register
       auto &map = this->t;
-      if (isTypeWithPointers(bc_insn->getType())) {
+      if (bc_insn->getType()->isPointerTy()) {
         llvm::Value *operand = bc_insn->getOperand(0);
         auto operand_alv_iterator = map.find(operand);
         if (operand_alv_iterator != map.end()) {
-          auto operand_alv = operand_alv_iterator->second;
-          map[&insn] = operand_alv;
-          break;
+          auto &operand_alv = operand_alv_iterator->second;
+          if (operand_alv.isTop()) {
+            map[&insn] = AbstractLatticeValue::makeTop();
+          } else if (operand_alv.isBottom()) {
+            map[&insn] = AbstractLatticeValue::makeBottom();
+          } else if (operand_alv.isFPOffset()) {
+            auto ba = operand_alv.getFPOffsetBase();
+            auto p = operand_alv.getFPOffset();
+            auto bo = operand_alv.getFPOffsetBound();
+
+            llvm::Type *bc_type = bc_insn->getType();
+            if (bc_type->getNumContainedTypes() > 0) {
+              llvm::Type *pointee = bc_type->getContainedType(0);
+              u_int64_t new_type_size =
+                  DL.getTypeAllocSize(pointee).getFixedValue();
+              auto new_offset =
+                  AbstractLatticeValue::makeFPOffset(p, ba, bo, new_type_size);
+              map[&insn] = new_offset;
+            } else {
+              assert(false);
+            }
+          } else {
+            assert(false);
+          }
         } else {
           map[&insn] = AbstractLatticeValue::makeTop();
         }
+      } else if (isTypeWithPointers(bc_insn->getType())) {
+        map[&insn] = AbstractLatticeValue::makeTop();
       }
     } break;
 
@@ -673,6 +779,9 @@ public:
   /// to specific locations on the stack
   void perform_analysis(Function &F) {
 
+    // data layout
+    auto DL = F.getParent()->getDataLayout();
+
     // map every static alloca instruction to offsets from the frame pointer
     auto alloca2offset = StackPointerAnalysis::initialize_alloca_offsets(F);
 
@@ -701,7 +810,7 @@ public:
 
       // perform transfer function
       for (auto &I : *BB) {
-        joined.transfer_insn(I, alloca2offset);
+        joined.transfer_insn(I, DL, alloca2offset);
       }
 
       // add successors iff previous output of transfer function is not
@@ -3283,13 +3392,13 @@ void SoftBoundCETSPass::addSpatialChecks(
       // parth added:
       // use the stack analysis to elide bounds checking for pointers determined
       // to point to specific locations on the stack
-      if (Instruction *ptr_operand_instr =
-              dyn_cast<llvm::Instruction>(pointer_operand)) {
-        auto spa_alv = spa.query_ins(ptr_operand_instr);
-        if (spa_alv.isFPOffset()) {
-          return;
-        }
-      }
+      // if (Instruction *ptr_operand_instr =
+      //         dyn_cast<llvm::Instruction>(pointer_operand)) {
+      //   auto spa_alv = spa.query_ins(ptr_operand_instr);
+      //   if (spa_alv.isFPOffset()) {
+      //     return;
+      //   }
+      // }
 
       // FIXME: Add more comments here Iterate over the uses
 

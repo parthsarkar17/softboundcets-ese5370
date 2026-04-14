@@ -31,6 +31,29 @@ Definition join (a1 a2 : alv) : alv :=
 Hint Constructors leq : core.
 
 
+Theorem join_commutative : forall a b : alv, join a b = join b a.
+Proof.
+  intros. destruct a; destruct b; try reflexivity. simpl.
+  replace (base =? base0) with (base0 =? base).
+  replace (ptr =? ptr0) with (ptr0 =? ptr).
+  replace (bound =? bound0) with (bound0 =? bound).
+  destruct ((base0 =? base) && (ptr0 =? ptr) && (bound0 =? bound)) eqn:B.
+  - destruct (base0 =? base) eqn:B1;
+    destruct (ptr0 =? ptr) eqn:B2;
+    destruct (bound0 =? bound) eqn:B3; try discriminate.
+    + apply Nat.eqb_eq in B1.
+      apply Nat.eqb_eq in B2.
+      apply Nat.eqb_eq in B3.
+      rewrite B1. rewrite B2. rewrite B3.
+      replace (max size size0) with (max size0 size).
+      { reflexivity. }
+      { apply Nat.max_comm. }
+  - reflexivity.
+  - apply eqb_sym.
+  - apply eqb_sym.
+  - apply eqb_sym.
+Qed.
+
 Theorem join_is_monotonic : forall x y z: alv, 
     (leq x y -> leq (join x z) (join y z))
  /\ (leq y z -> leq (join x y) (join x z)).
@@ -69,23 +92,23 @@ Qed.
 
 Inductive llvm_instruction : Type :=
   | static_alloca (typ_size fp_ofst : nat)
-  | bitcast (typ_size : nat)
-  | gep (typ_size : nat) (ofst : nat)
+  | bitcast (typ_size : nat) (operand_alv : alv)
+  | gep (typ_size : nat) (ofst : nat) (operand_alv : alv)
   | other.
   
   
-Definition flow_rule (insn : llvm_instruction) (operand_alv : alv) : alv :=
+Definition flow_rule (insn : llvm_instruction) : alv :=
   match insn with
   | static_alloca (typ_size) (fp_ofst) => 
       fpoffset fp_ofst fp_ofst (fp_ofst + typ_size) typ_size
-  | bitcast (typ_size) =>
+  | bitcast (typ_size) (operand_alv) =>
       match operand_alv with
       | top => top
       | bottom => bottom
       | fpoffset base ptr bound size =>
           fpoffset base ptr bound typ_size
       end
-  | gep (typ_size) (ofst) => 
+  | gep (typ_size) (ofst) (operand_alv) => 
       match operand_alv with
       | top => top
       | bottom => bottom
@@ -95,9 +118,9 @@ Definition flow_rule (insn : llvm_instruction) (operand_alv : alv) : alv :=
   | other => top
   end.
   
-Theorem flow_rules_monotonic : forall insn op1 op2, 
-  leq op1 op2 -> leq (flow_rule insn op1) (flow_rule insn op2).
+Theorem flow_rules_monotonic : 
+  forall insn, leq (flow_rule insn) (flow_rule insn).
 Proof.
-  intros insn op1 op2 L.
-  destruct insn; inversion L; subst; simpl; auto.
+  destruct insn; simpl; auto; 
+  destruct operand_alv; simpl; auto.
 Qed.
