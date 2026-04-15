@@ -11,7 +11,9 @@ int main()
     int *b[] = {&a[2]};
     int **c[] = {&b[0]};
 
-    int x = *(a + 1);
+    int q = *(b + 0);
+
+    int x = *(a + 2);
     int y = *(a + 2);
 
     int z = mul(x, y);
