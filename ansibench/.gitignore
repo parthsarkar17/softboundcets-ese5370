@@ -1,0 +1,14 @@
+# macOS artifacts
+._*
+.!*
+
+# Build output
+bin/
+
+# Local tools
+tools/
+
+# Agent contexts and steering
+AGENTS/
+.kiro/
+.claude/

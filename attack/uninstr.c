@@ -9,7 +9,7 @@ typedef struct {
     size_t *lock;
 } __shadow_softboundcets_metadata_t;
 
-static __shadow_softboundcets_metadata_t** PRIMARY_TRIE_TABLE = 0x7FFFD3C00000;
+static __shadow_softboundcets_metadata_t** PRIMARY_TRIE_TABLE = 0x7fffd3c00000; 
 
 void log_metadata_changes(__shadow_softboundcets_metadata_t *entry, int after_attack)
 {
@@ -47,8 +47,9 @@ void overwrite_metadata_map(const void *addr_of_ptr, int array_len)
     // log original privilege
     log_metadata_changes(entry, 0);
 
-    // extend privilege by just 4 bytes
+    // extend privilege by just 4 bytes in each direction
     entry->bound = entry->base + ((array_len + 1) * sizeof(int));
+    entry->base = entry->base - (sizeof(int));
 
     // log modified privilege
     log_metadata_changes(entry, 1);
