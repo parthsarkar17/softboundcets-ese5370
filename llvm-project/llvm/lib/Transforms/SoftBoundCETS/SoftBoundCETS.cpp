@@ -363,6 +363,495 @@ const char kSoftBoundCETSLoadLockShadowStackFnName[] =
 const char kSoftBoundCETSLoadShadowStackMetadataPtrFnName[] =
     "__softboundcets_shadow_stack_metadata_ptr";
 
+// -------------------------------------------------------------------------
+// BEGIN STACK POINTER ANALYSIS
+// -------------------------------------------------------------------------
+
+class AbstractLatticeValue {
+private:
+  // the following fields encode the following:
+  // enum AbstractLatticeValue {
+  //  Top,
+  //  FPOffset (offset, base, bound, size)
+  //  Bottom
+  // }
+  //
+  // enum_value = 0 ==> TOP, enum_value = 2 ==> BOTTOM, enum_value 1 ==> offset,
+  // base, etc. are meaningful
+  u_int8_t enum_value;
+  u_int64_t offset;
+  u_int64_t base;
+  u_int64_t bound;
+  u_int64_t size;
+
+public:
+  bool isTop() const { return this->enum_value == 0; }
+  bool isFPOffset() const { return this->enum_value == 1; }
+  bool isBottom() const { return this->enum_value == 2; }
+
+  u_int64_t getFPOffset() const {
+    assert(this->enum_value == 1);
+    return this->offset;
+  }
+
+  u_int64_t getFPOffsetBase() const {
+    assert(this->enum_value == 1);
+    return this->base;
+  }
+
+  u_int64_t getFPOffsetBound() const {
+    assert(this->enum_value == 1);
+    return this->bound;
+  }
+
+  u_int64_t getFPOffsetSize() const {
+    assert(this->enum_value == 1);
+    return this->size;
+  }
+
+  /// Create an object that represents no precision at all
+  static AbstractLatticeValue makeTop() {
+    AbstractLatticeValue v;
+    v.enum_value = 0;
+    return v;
+  }
+
+  /// Create an object that represents a specific frame pointer offset
+  static AbstractLatticeValue makeFPOffset(u_int64_t ofst, u_int64_t base,
+                                           u_int64_t bound, u_int64_t size) {
+    AbstractLatticeValue v;
+    v.enum_value = 1;
+    v.offset = ofst;
+    v.base = base;
+    v.bound = bound;
+    v.size = size;
+    return v;
+  }
+
+  /// Create an object representing the most precision (i.e. can assign
+  /// arbitrary frame pointer values, as desired)
+  static AbstractLatticeValue makeBottom() {
+    AbstractLatticeValue v;
+    v.enum_value = 2;
+    return v;
+  }
+
+  bool equals(const AbstractLatticeValue &other) const {
+    if (other.isTop() && this->isTop()) {
+      return true;
+    } else if (other.isBottom() && this->isBottom()) {
+      return true;
+    } else if (other.isFPOffset() && this->isFPOffset()) {
+      return ((other.getFPOffset() == this->getFPOffset()) &&
+              (other.getFPOffsetBase() == this->getFPOffsetBase()) &&
+              (other.getFPOffsetBound() == this->getFPOffsetBound()) &&
+              (other.getFPOffsetSize() == this->getFPOffsetSize()));
+    } else {
+      return false;
+    }
+  }
+
+  AbstractLatticeValue merge(const AbstractLatticeValue &other) const {
+
+    if (this->isTop()) {
+      return *this;
+    } else if (this->isBottom()) {
+      return other;
+    } else if (this->isFPOffset()) {
+
+      auto ba1 = this->getFPOffsetBase();
+      auto p1 = this->getFPOffset();
+      auto bo1 = this->getFPOffsetBound();
+      auto s1 = this->getFPOffsetSize();
+
+      if (other.isTop()) {
+        return other;
+      } else if (other.isBottom()) {
+        return *this;
+      } else if (other.isFPOffset()) {
+
+        auto ba2 = other.getFPOffsetBase();
+        auto p2 = other.getFPOffset();
+        auto bo2 = other.getFPOffsetBound();
+        auto s2 = other.getFPOffsetSize();
+
+        if ((ba1 == ba2) && (p1 == p2) && (bo1 == bo2)) {
+          u_int64_t max_s1_s2;
+          if (s1 < s2) {
+            max_s1_s2 = s2;
+          } else {
+            max_s1_s2 = s1;
+          }
+          return AbstractLatticeValue::makeFPOffset(p1, ba1, bo1, max_s1_s2);
+        } else {
+          return AbstractLatticeValue::makeTop();
+        }
+      } else {
+        assert(false);
+      }
+    } else {
+      assert(false);
+    }
+  }
+};
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              const AbstractLatticeValue &alv) {
+  if (alv.isTop()) {
+    os << "Top";
+  } else if (alv.isBottom()) {
+    os << "Bottom";
+  } else if (alv.isFPOffset()) {
+    auto ba = alv.getFPOffsetBase();
+    auto p = alv.getFPOffset();
+    auto bo = alv.getFPOffsetBound();
+    auto s = alv.getFPOffsetSize();
+    os << "FPOffset(" << p << " in [" << ba << ", " << bo
+       << "] with size: " << s << ")";
+  }
+  return os;
+}
+
+class Variable2ALV {
+
+private:
+  DenseMap<llvm::Value *, AbstractLatticeValue> t;
+
+public:
+  /// Find the ALV associated with a given variable. If unmapped, return TOP.
+  AbstractLatticeValue query(llvm::Instruction *I) const {
+    auto V = llvm::cast<llvm::Value>(I);
+    auto alv_iterator = this->t.find(V);
+    if (alv_iterator != this->t.end()) {
+      auto alv_clone = alv_iterator->second;
+      return alv_clone;
+    } else {
+      return AbstractLatticeValue::makeTop();
+    }
+  }
+
+  /// The initial map should map everything to BOTTOM; if it doesn't exist in
+  /// the map, it is never assigned as a pointer in the program, which means it
+  /// implicitly gets TOP by virtue of exclusion from the map.
+  static Variable2ALV initialize(llvm::Function &F) {
+    Variable2ALV v2avl_obj;
+    DenseMap<llvm::Value *, AbstractLatticeValue> v2avl_map;
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        if (isTypeWithPointers(I.getType())) {
+          llvm::Value *V = &I;
+          v2avl_map[V] = AbstractLatticeValue::makeBottom();
+        }
+      }
+    }
+    v2avl_obj.t = v2avl_map;
+    return v2avl_obj;
+  }
+
+  /// Pretty print the variable to abstract lattice value map
+  void print_v2alv() const {
+    llvm::outs() << "{\n";
+    for (auto &[key, value] : this->t) {
+      llvm::outs() << "    insn: " << key << " with form " << *key
+                   << " with abstract value: " << value << "\n";
+    }
+    llvm::outs() << "}\n";
+  }
+
+  Variable2ALV join(const Variable2ALV &other) const {
+    Variable2ALV new_v2alv;
+    DenseMap<llvm::Value *, AbstractLatticeValue> new_v2alv_map;
+
+    auto &other_map = other.t;
+    // go through one of the maps, and merge each binding with the analogous
+    // binding found in the other map
+    for (auto &[this_key, this_value] : this->t) {
+      auto other_value_iterator = other_map.find(this_key);
+      if (other_value_iterator != other_map.end()) {
+        auto &other_value = other_value_iterator->second;
+        auto new_value =
+            this_value.merge(other_value); // commutative; see proof
+        new_v2alv_map[this_key] = new_value;
+      } else {
+        // the two maps should bind the same keys; unreachable
+        assert(false);
+      }
+    }
+    new_v2alv.t = new_v2alv_map;
+    return new_v2alv;
+  }
+
+  /// Compares two maps from variables to abstract lattice values. Returns true
+  /// if and only if every binding in one is present in the other and if the
+  /// sizes are equal
+  bool is_identical(const Variable2ALV &other) const {
+    for (auto &[this_key, this_value] : this->t) {
+      auto t_binding_in_o_it = other.t.find(this_key);
+      if (t_binding_in_o_it != other.t.end()) {
+        auto t_binding_in_o = t_binding_in_o_it->second;
+        if (!(this_value.equals(t_binding_in_o))) {
+          return false;
+        }
+      }
+    }
+    return (this->t.size() == other.t.size());
+  }
+
+  /// In-place modify a Var2ALV map to deal with an instruction
+  void transfer_insn(Instruction &insn, llvm::DataLayout &DL,
+                     DenseMap<AllocaInst *, u_int64_t> &alloca2offset) {
+
+    switch (insn.getOpcode()) {
+    case Instruction::Alloca: {
+      auto *alloca_insn = dyn_cast<AllocaInst>(&insn);
+      assert(alloca_insn && "Not an Alloca inst?");
+      auto &map = this->t;
+      if (alloca_insn->isStaticAlloca()) {
+        auto fp_offset_iterator = alloca2offset.find(alloca_insn);
+        if (fp_offset_iterator != alloca2offset.end()) {
+          u_int64_t fp_offset = fp_offset_iterator->second;
+          u_int64_t alloca_size = *alloca_insn->getAllocationSizeInBits(DL) / 8;
+          map[&insn] = AbstractLatticeValue::makeFPOffset(
+              fp_offset, fp_offset, (fp_offset + alloca_size), alloca_size);
+        } else {
+          // should have inserted every static alloca into map; unreachable
+          assert(false);
+        }
+      } else {
+        map[&insn] = AbstractLatticeValue::makeTop();
+      }
+    } break;
+
+    case Instruction::GetElementPtr: {
+      auto *gep_insn = dyn_cast<GetElementPtrInst>(&insn);
+      assert(gep_insn && "Not a GEP inst?");
+
+      auto &v2alv_map = this->t;
+      APInt gep_offset_ap(64, 0);
+      bool is_constant = gep_insn->accumulateConstantOffset(DL, gep_offset_ap);
+
+      if (is_constant) {
+        uint64_t gep_offset = gep_offset_ap.getZExtValue();
+        auto base_ptr = gep_insn->getOperand(0);
+        auto base_ptr_binding_iter = v2alv_map.find(base_ptr);
+        if (base_ptr_binding_iter != v2alv_map.end()) {
+          auto &base_ptr_alv = base_ptr_binding_iter->second;
+          if (base_ptr_alv.isTop()) {
+            v2alv_map[&insn] = AbstractLatticeValue::makeTop();
+          } else if (base_ptr_alv.isBottom()) {
+            v2alv_map[&insn] = AbstractLatticeValue::makeBottom();
+          } else if (base_ptr_alv.isFPOffset()) {
+            auto ba = base_ptr_alv.getFPOffsetBase();
+            auto p = base_ptr_alv.getFPOffset();
+            auto bo = base_ptr_alv.getFPOffsetBound();
+
+            if (gep_insn->getType()->isPointerTy()) {
+              auto *pointee = gep_insn->getType()->getContainedType(0);
+              auto new_type_size = DL.getTypeAllocSize(pointee).getFixedValue();
+              auto new_offset = AbstractLatticeValue::makeFPOffset(
+                  p + gep_offset, ba, bo, new_type_size);
+              v2alv_map[&insn] = new_offset;
+            } else {
+              assert(false);
+            }
+          } else {
+            assert(false);
+          }
+        } else {
+          v2alv_map[&insn] = AbstractLatticeValue::makeTop();
+        }
+      } else {
+        v2alv_map[&insn] = AbstractLatticeValue::makeTop();
+      }
+    } break;
+
+    case BitCastInst::BitCast: {
+      auto *bc_insn = dyn_cast<BitCastInst>(&insn);
+      assert(bc_insn && "Not a BitCast inst?");
+
+      // here, we simply want to flow the abstract value associated with the
+      // operand (if it exists) into the result register
+      auto &map = this->t;
+      if (bc_insn->getType()->isPointerTy()) {
+        llvm::Value *operand = bc_insn->getOperand(0);
+        auto operand_alv_iterator = map.find(operand);
+        if (operand_alv_iterator != map.end()) {
+          auto &operand_alv = operand_alv_iterator->second;
+          if (operand_alv.isTop()) {
+            map[&insn] = AbstractLatticeValue::makeTop();
+          } else if (operand_alv.isBottom()) {
+            map[&insn] = AbstractLatticeValue::makeBottom();
+          } else if (operand_alv.isFPOffset()) {
+            auto ba = operand_alv.getFPOffsetBase();
+            auto p = operand_alv.getFPOffset();
+            auto bo = operand_alv.getFPOffsetBound();
+
+            llvm::Type *bc_type = bc_insn->getType();
+            if (bc_type->getNumContainedTypes() > 0) {
+              llvm::Type *pointee = bc_type->getContainedType(0);
+              u_int64_t new_type_size =
+                  DL.getTypeAllocSize(pointee).getFixedValue();
+              auto new_offset =
+                  AbstractLatticeValue::makeFPOffset(p, ba, bo, new_type_size);
+              map[&insn] = new_offset;
+            } else {
+              assert(false);
+            }
+          } else {
+            assert(false);
+          }
+        } else {
+          map[&insn] = AbstractLatticeValue::makeTop();
+        }
+      } else if (isTypeWithPointers(bc_insn->getType())) {
+        map[&insn] = AbstractLatticeValue::makeTop();
+      }
+    } break;
+
+    default: {
+      if (isTypeWithPointers(insn.getType())) {
+        auto &map = this->t;
+
+        // lose all precision for every other pointer assignment (e.g. result
+        // of malloc call)
+        map[&insn] = AbstractLatticeValue::makeTop();
+      }
+    } break;
+    }
+  }
+};
+
+class StackPointerAnalysis {
+private:
+  DenseMap<llvm::BasicBlock *, Variable2ALV> ins;
+  DenseMap<llvm::BasicBlock *, Variable2ALV> outs;
+
+  /// Create a map from static alloca instructions to offsets from the frame
+  /// pointer
+  static DenseMap<llvm::AllocaInst *, u_int64_t>
+  initialize_alloca_offsets(Function &F) {
+    DenseMap<AllocaInst *, unsigned long> stack_offset_map;
+    u_int64_t offset = 0;
+    auto DL = F.getParent()->getDataLayout();
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        if (auto *AI = dyn_cast<AllocaInst>(&I)) {
+          if (AI->isStaticAlloca()) {
+            u_int64_t size_bytes = *AI->getAllocationSizeInBits(DL) / 8;
+            bool is_array_alloc = AI->isArrayAllocation();
+            PointerType *t = AI->getType();
+            stack_offset_map[AI] = offset;
+            offset = offset + size_bytes;
+          }
+        }
+      }
+    }
+    return stack_offset_map;
+  }
+
+public:
+  AbstractLatticeValue query_outs(Instruction *I) const {
+    auto *parentBB = I->getParent();
+    auto v2alv_iterator = outs.find(parentBB);
+    if (v2alv_iterator != this->outs.end()) {
+      auto &var2alv = v2alv_iterator->second;
+      auto alv = var2alv.query(I);
+      return alv;
+    } else {
+      // all bbs should be mapped
+      assert(false);
+    }
+  }
+
+  /// Create an empty object that represents the analysis before the worklist
+  /// algorithm is run
+  static StackPointerAnalysis create_empty_analysis(Function &F) {
+    StackPointerAnalysis v;
+    DenseMap<llvm::BasicBlock *, Variable2ALV> ins, outs;
+    for (auto &BB : F) {
+      v.ins[&BB] = Variable2ALV::initialize(F);
+      v.outs[&BB] = Variable2ALV::initialize(F);
+    }
+    return v;
+  }
+
+  /// Modifies the (presumably empty) object in-place to produce ins/outs
+  /// representing a flow-sensitive analysis of pointer variables that point
+  /// to specific locations on the stack
+  void perform_analysis(Function &F) {
+
+    // data layout
+    auto DL = F.getParent()->getDataLayout();
+
+    // map every static alloca instruction to offsets from the frame pointer
+    auto alloca2offset = StackPointerAnalysis::initialize_alloca_offsets(F);
+
+    // initialize the worklist queue
+    std::queue<BasicBlock *> BBWorklist;
+    auto *BB = &F.getEntryBlock();
+    BBWorklist.push(BB);
+
+    // worklist algorithm
+    while (BBWorklist.size() != 0) {
+
+      // get head of queue
+      BB = BBWorklist.front();
+      BBWorklist.pop();
+
+      // perform JOIN on outputs of predecessors of this BB
+      auto joined = Variable2ALV::initialize(F);
+      for (auto it = pred_begin(BB), et = pred_end(BB); it != et; ++it) {
+        llvm::BasicBlock *Pred = *it;
+        auto pred_out = this->outs[Pred];
+        auto new_map = joined.join(pred_out);
+        joined = new_map;
+      }
+
+      this->ins[BB] = joined;
+
+      // perform transfer function
+      for (auto &I : *BB) {
+        joined.transfer_insn(I, DL, alloca2offset);
+      }
+
+      // add successors iff previous output of transfer function is not
+      // identical to the one just produced
+      auto &prev_out = this->outs[BB];
+      if (!joined.is_identical(prev_out)) {
+        for (auto SI = succ_begin(BB), SE = succ_end(BB); SI != SE; ++SI) {
+          BasicBlock *NextBB = *SI;
+          BBWorklist.push(NextBB);
+        }
+      }
+      this->outs[BB] = joined;
+    }
+  }
+
+  void print_analysis(Function &F) const {
+    for (auto &BB : F) {
+      auto bb_in_it = this->ins.find(&BB);
+      auto bb_out_it = this->outs.find(&BB);
+      if ((bb_in_it != this->ins.end()) && (bb_out_it != this->outs.end())) {
+        auto &bb_in = bb_in_it->second;
+        auto &bb_out = bb_out_it->second;
+
+        bb_in.print_v2alv();
+        llvm::outs() << "Basic block :" << BB << "\n";
+        bb_out.print_v2alv();
+        llvm::outs() << "\n\n\n\n";
+
+      } else {
+        // all BBs should be mapped
+        assert(false);
+      }
+    }
+  }
+};
+
+// -------------------------------------------------------------------------
+// END STACK POINTER ANALYSIS
+// -------------------------------------------------------------------------
+
 // #define SOFTBOUNDCETS_CHK_INTRINSIC 1
 
 char SoftBoundCETSPass::ID = 0;
@@ -2842,8 +3331,10 @@ static BasicBlock *createFaultBlock(Function *F) {
 // safety check functions and elides the check if the map says it is
 // not necessary to check.
 
-void SoftBoundCETSPass::addSpatialChecks(Instruction *load_store,
-                                         std::map<Value *, int> &FDCE_map) {
+void SoftBoundCETSPass::addSpatialChecks(
+    Instruction *load_store, std::map<Value *, int> &FDCE_map,
+    // now add parth dataflow analyses objects
+    StackPointerAnalysis &spa) {
   if (!ClSpatialSafety)
     return;
 
@@ -2898,6 +3389,32 @@ void SoftBoundCETSPass::addSpatialChecks(Instruction *load_store,
       if (FDCE_map.count(load_store)) {
         return;
       }
+
+      // parth added:
+      // use the stack analysis to elide bounds checking for pointers determined
+      // to point to specific locations on the stack
+      if (Instruction *ptr_operand_instr =
+              dyn_cast<llvm::Instruction>(pointer_operand)) {
+
+        auto spa_alv = spa.query_outs(ptr_operand_instr);
+
+        if (spa_alv.isFPOffset()) {
+          auto base = spa_alv.getFPOffsetBase();
+          auto bound = spa_alv.getFPOffsetBound();
+          auto ptr = spa_alv.getFPOffset();
+          auto size = spa_alv.getFPOffsetSize();
+
+          if ((base <= ptr) && (ptr + size <= bound)) {
+            // llvm::outs() << "elided load/store instruction for: "
+            //              << ptr_operand_instr << " with form "
+            //              << *ptr_operand_instr << " with ALV: " << spa_alv
+            //              << "\n";
+            return;
+          }
+        }
+      }
+
+      // end parth added
 
       // FIXME: Add more comments here Iterate over the uses
 
@@ -3376,7 +3893,11 @@ void SoftBoundCETSPass::addTemporalChecks(Instruction *load_store,
   return;
 }
 
-void SoftBoundCETSPass::addDereferenceChecks(Function *func) {
+void SoftBoundCETSPass::addDereferenceChecks(
+    Function *func
+    // now add parth dataflow analyses objects
+    // StackPointerAnalysis &spa
+) {
   Function &F = *func;
 
   if (func->isVarArg())
@@ -3536,6 +4057,11 @@ void SoftBoundCETSPass::addDereferenceChecks(Function *func) {
 
   m_dominator_tree = &getAnalysis<DominatorTreeWrapperPass>(*func).getDomTree();
 
+  // perform stack pointer analysis
+  auto spa = StackPointerAnalysis::create_empty_analysis(F);
+  spa.perform_analysis(F);
+  // spa.print_analysis(F);
+
   /* intra-procedural load dererference check elimination map */
   std::map<Value *, int> func_deref_check_elim_map;
   std::map<Value *, int> func_temporal_check_elim_map;
@@ -3597,7 +4123,7 @@ void SoftBoundCETSPass::addDereferenceChecks(Function *func) {
 
       if (isa<LoadInst>(new_inst) || isa<StoreInst>(new_inst)) {
 
-        addSpatialChecks(new_inst, func_deref_check_elim_map);
+        addSpatialChecks(new_inst, func_deref_check_elim_map, spa);
         addTemporalChecks(new_inst, bb_temporal_check_elim_map,
                           func_temporal_check_elim_map);
         continue;
@@ -4772,723 +5298,6 @@ void SoftBoundCETSPass::freeFunctionKeyLock(Function *func, Value *&func_key,
     }
   }
 }
-
-/// Implement DenseMapInfo for `bool`; required for std::pair<Value *, bool>
-/// to be used as a key in a DenseMap
-namespace llvm {
-template <> struct DenseMapInfo<bool> {
-  static inline bool getEmptyKey() { return false; }
-  static inline bool getTombstoneKey() { return true; }
-  static unsigned getHashValue(const bool &val) { return val ? 1 : 0; }
-  static bool isEqual(const bool &a, const bool &b) { return a == b; }
-};
-} // namespace llvm
-
-///  | TOP             = 0
-///  | OFFSET (value)  = 1
-///  | BOTTOM          = 2
-///
-/// For a given basic block, this function provides an initial map from stack
-/// variables and dereferenced stack variables to values of the lattice.
-/// Specifically, the returned object maps an instruction (along with a boolean
-/// describing whether it is a normal variable (true) or a dereference (false))
-/// to an object representing a value in the lattice (documented above).
-DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
-initialize_var2value(Function &F) {
-  DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
-      insn2offset;
-  for (auto &BB : F) {
-    // llvm::outs() << "BB name : " << BB << "\n";
-    for (auto &I : BB) {
-      llvm::Type *insn_type = I.getType();
-      bool is_ptr = insn_type->isPointerTy() || insn_type->isArrayTy() ||
-                    insn_type->isStructTy();
-      if (is_ptr) {
-        llvm::Value *V = &I;
-        insn2offset[{V, true}] = {2, 0};
-        insn2offset[{V, false}] = {2, 0};
-      }
-    }
-  }
-  return insn2offset;
-}
-
-/// Merge individual lattice values
-std::pair<unsigned long, unsigned long>
-merge_lattice_values(std::pair<unsigned long, unsigned long> v1,
-                     std::pair<unsigned long, unsigned long> v2) {
-
-  // unpack
-  auto v1_0 = get<0>(v1);
-  auto v1_1 = get<1>(v1);
-  auto v2_0 = get<0>(v2);
-  auto v2_1 = get<1>(v2);
-
-  // do comparisons
-  if ((v1_0 == 0) && (v2_0 == 0)) {
-    return {0, 0};
-  } else if ((v1_0 == 0) && (v2_0 == 1)) {
-    return {0, 0};
-  } else if ((v1_0 == 0) && (v2_0 == 2)) {
-    return {0, 0};
-  } else if ((v1_0 == 1) && (v2_0 == 0)) {
-    return {0, 0};
-  } else if ((v1_0 == 1) && (v2_0 == 1)) {
-    if (v1_1 == v2_1) {
-      return {1, v1_1};
-    } else {
-      return {0, 0};
-    }
-  } else if ((v1_0 == 1) && (v2_0 == 2)) {
-    return {1, v1_1};
-  } else if ((v1_0 == 2) && (v2_0 == 0)) {
-    return {0, 0};
-  } else if ((v1_0 == 2) && (v2_0 == 1)) {
-    return {1, v2_1};
-  } else if ((v1_0 == 2) && (v2_0 == 2)) {
-    return {2, 0};
-  } else {
-    printf("Something bad happened!\n");
-  }
-}
-
-/// Performs a merge across maps from variables to lattice values. Used
-/// for the JOIN operator, which merges the out maps of predecessors of a basic
-/// block B into the in of B
-DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
-join(DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
-         m1,
-     DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
-         m2) {
-  DenseMap<std::pair<Value *, bool>, std::pair<unsigned long, unsigned long>>
-      new_map;
-  for (auto &[key, m1_value] : m1) {
-    auto m2_value = m2[key];
-    auto new_value = merge_lattice_values(m1_value, m2_value);
-    new_map[key] = new_value;
-  }
-  return new_map;
-}
-
-void SoftBoundCETSPass::pointerAliasing(Function &F) {
-
-  // map stack allocation sites to offset from frame pointer
-  SmallDenseMap<AllocaInst *, unsigned long> stack_offset_map;
-  unsigned long offset = 0;
-  auto DL = F.getParent()->getDataLayout();
-  for (auto &BB : F) {
-    for (auto &I : BB) {
-      if (auto *AI = dyn_cast<AllocaInst>(&I)) {
-        if (AI->isStaticAlloca()) {
-          unsigned long size_bytes = *AI->getAllocationSizeInBits(DL) / 8;
-          bool is_array_alloc = AI->isArrayAllocation();
-          PointerType *t = AI->getType();
-          stack_offset_map[AI] = offset;
-          offset = offset + size_bytes;
-          // std::cout << "insn located at: " << AI
-          //           << " and is array alloc: " << is_array_alloc
-          //           << " with size: " << size_bytes << " with type : " << t
-          //           << "\n";
-        }
-      }
-    }
-  }
-
-  // for (auto &[key, value] : stack_offset_map) {
-  //   std::cout << "insn : " << key << " at offset : " << value << "\n";
-  // }
-  // printf("\n");
-
-  // workflow to map stack pointer variables (bool=true) and dereferenced stack
-  // pointer variables (bool=false) to the offset from frame pointer
-  DenseMap<BasicBlock *, DenseMap<std::pair<Value *, bool>,
-                                  std::pair<unsigned long, unsigned long>>>
-      bb2in, bb2out;
-
-  for (auto &BB : F) {
-    bb2in[&BB] = initialize_var2value(F);
-    bb2out[&BB] = initialize_var2value(F);
-  }
-
-  std::queue<BasicBlock *> BBWorklist;
-  auto *BB = &F.getEntryBlock();
-  BBWorklist.push(BB);
-
-  while (BBWorklist.size() != 0) {
-
-    // get head of queue
-    BB = BBWorklist.front();
-    BBWorklist.pop();
-
-    // consolidate outputs of predecessors of this BB via JOIN function
-    auto in = initialize_var2value(F);
-    for (auto it = pred_begin(BB), et = pred_end(BB); it != et; ++it) {
-      llvm::BasicBlock *Pred = *it;
-      auto pred_out = bb2out[Pred];
-      auto new_map = join(in, pred_out);
-      in = new_map;
-    }
-
-    // now, `in` maps every pointer variable to an abstract lattice value.
-    // it is the responsibility of the transfer function (i.e. instruction
-    // constraints) to refine the mapping.
-    for (auto &I : *BB) {
-      switch (I.getOpcode()) {
-
-      // We want to make sure all variables assigned in an ALLOCA (provided they
-      // are not dynamic) receive an abstract lattice value representing a known
-      // offset from FP
-      case Instruction::Alloca: {
-        auto *AI = dyn_cast<AllocaInst>(&I);
-        assert(AI && "Not an Alloca inst?");
-        if (AI->isStaticAlloca()) {
-          in[{AI, true}] = {1, stack_offset_map[AI]};
-        } else {
-          in[{AI, true}] = {0, 0};
-        }
-      } break;
-
-      case Instruction::Store: {
-        auto *S = dyn_cast<StoreInst>(&I);
-        assert(S && "Not a Store inst?");
-        llvm::Value *valStored = S->getValueOperand();
-        llvm::Value *locStored = S->getPointerOperand();
-
-        std::pair<unsigned long, unsigned long> valStoredMapping;
-        auto valStoredMappingIt = in.find({valStored, true});
-        if (valStoredMappingIt != in.end()) {
-          // thing to store exists in map (i.e. storing a pointer); so, need
-          // to flow the abstract lattice value into the dereference of pointer
-          valStoredMapping = valStoredMappingIt->second;
-          // in[{locStored, false}] = valStoredMapping;
-        } else {
-          // if thing to store doesn't exist in map, we need to record that
-          // the dereference of this pointer stores TOP
-          // in[{locStored, false}] = {0, 0};
-          valStoredMapping = {0, 0};
-        }
-
-        // go through all dereferences to the same place, and update them too
-        auto locStoredMappingIt = in.find({locStored, true});
-        if (locStoredMappingIt != in.end()) {
-          auto locStoredMapping = locStoredMappingIt->second;
-          auto first = get<0>(locStoredMapping);
-          if (first == 1) {
-            auto offset = get<1>(locStoredMapping);
-            for (auto &[key, value] : in) {
-              auto key_first = get<0>(key);
-              auto key_second = get<1>(key);
-              auto value_first = get<0>(value);
-              auto value_second = get<1>(value);
-              if ((key_second == true) && (value_first == 1) &&
-                  (value_second == offset)) {
-                in[{key_first, false}] = valStoredMapping;
-              }
-            }
-          }
-        }
-
-      } break;
-
-      case Instruction::Load: {
-        auto *L = dyn_cast<LoadInst>(&I);
-        assert(L && "Not a Load inst?");
-
-        if (isTypeWithPointers(L->getType())) {
-          llvm::Value *derefLocation = L->getPointerOperand();
-          auto valStoredAtDerefIt = in.find({derefLocation, false});
-
-          if (valStoredAtDerefIt != in.end()) {
-            // if the pointer being dereferenced has a mapped lattice value,
-            // flow this to the pointer being assigned by the load
-            auto valStoredAtDeref = valStoredAtDerefIt->second;
-            in[{L, true}] = valStoredAtDeref;
-          } else {
-            // if it doesn't exist, then we know it has to implicity be a TOP;
-            // flow this instead of anything stored
-            in[{L, true}] = {0, 0};
-          }
-        }
-      } break;
-
-      case BitCastInst::BitCast: {
-        auto *BC = dyn_cast<BitCastInst>(&I);
-        assert(BC && "Not a BitCast inst?");
-        // here, we simply want to flow the abstract value associated with the
-        // operand (if it exists) into the result register
-        if (isTypeWithPointers(BC->getType())) {
-          llvm::Value *operand = BC->getOperand(0);
-          auto operandValIt = in.find({operand, true});
-          if (operandValIt != in.end()) {
-            auto operandVal = operandValIt->second;
-            in[{BC, true}] = operandVal;
-          } else {
-            in[{BC, true}] = {0, 0};
-          }
-        }
-      } break;
-
-      case Instruction::GetElementPtr: {
-        auto *GEP = dyn_cast<GetElementPtrInst>(&I);
-        assert(GEP && "Not a GEP inst?");
-
-        auto num_operands = GEP->getNumOperands();
-        if (num_operands == 3) {
-          if (auto *first_index = dyn_cast<ConstantInt>(GEP->getOperand(1))) {
-            if (auto *second_index =
-                    dyn_cast<ConstantInt>(GEP->getOperand(2))) {
-              if (first_index->getZExtValue() == 0) {
-                if (auto base_pointer =
-                        dyn_cast<AllocaInst>(GEP->getOperand(0))) {
-                  auto base_pointer_offset_it =
-                      stack_offset_map.find(base_pointer);
-                  if (base_pointer_offset_it != stack_offset_map.end()) {
-
-                    auto base_pointer_offset = base_pointer_offset_it->second;
-                    auto second_index_const_value =
-                        second_index->getZExtValue();
-                    in[{GEP, true}] = {1, base_pointer_offset +
-                                              second_index_const_value};
-                    // break;
-                    // in[{GEP, true}] = {}
-                  } else {
-                    // std::cout << "failed on instruction " << GEP
-                    //           << " because base pointer offset not in map\n";
-                    in[{GEP, true}] = {0, 0};
-                  }
-                } else {
-                  // std::cout << "failed on instruction " << GEP
-                  //           << " because operand 0 is not an alloca\n";
-                  in[{GEP, true}] = {0, 0};
-                }
-                // auto base_pointer_offset =
-                // stack_offset_map.find(base_pointer); auto
-              } else {
-                // std::cout << "failed on instruction " << GEP
-                //           << " because first index neq 0\n";
-                in[{GEP, true}] = {0, 0};
-              }
-            } else {
-              // std::cout
-              //     << "failed on instruction " << GEP
-              //     << "because couldn't cast second operand to ConstantInt\n";
-              in[{GEP, true}] = {0, 0};
-            }
-          } else {
-            // std::cout << "failed on instruction " << GEP
-            //           << "because couldn't cast first operand to
-            //           ConstantInt\n";
-            in[{GEP, true}] = {0, 0};
-          }
-        } else {
-          // std::cout << "failed on instruction " << GEP
-          //           << "because number of operands neq 3\n";
-          in[{GEP, true}] = {0, 0};
-        }
-
-      } break;
-
-      case Instruction::Call: {
-        auto *CI = dyn_cast<CallInst>(&I);
-        assert(CI && "Not a Call inst?");
-
-        llvm::outs() << "found an call!\n";
-      } break;
-
-      case Instruction::IntToPtr: {
-        auto *IPI = dyn_cast<IntToPtrInst>(&I);
-        assert(IPI && "Not a IntToPtrInst?");
-        llvm::outs() << "found an inttoptr!\n";
-        break;
-      }
-
-      case Instruction::Ret: {
-        auto *RI = dyn_cast<ReturnInst>(&I);
-        assert(RI && "not a return inst?");
-        llvm::outs() << "found a ret!\n";
-      } break;
-
-      default: {
-        if (isTypeWithPointers(I.getType())) {
-          LLVM_DEBUG(errs() << "Unhandled instruction: " << I << "\n");
-          if (ClAssociateMissingMetadata)
-            if (ClAssociateOmnivalidMetadataWhenMissing)
-              associateOmnivalidMetadata(&I);
-            else
-              associateInvalidMetadata(&I);
-          else
-            assert(0 && "Instruction generating Pointer is not handled");
-        }
-      } break;
-      }
-    }
-
-    std::cout << "currently on BB: " << BB << "\n";
-    for (auto &[key, value] : in) {
-      auto s = get<0>(key);
-      llvm::outs() << "variable: " << *s << " with flag: " << get<1>(key)
-                   << " has value: " << get<0>(value)
-                   << "  with added data: " << get<1>(value) << "\n";
-    }
-
-    // compare previous out[bb] and new out[bb]; if changed, continue worklist
-  }
-}
-
-// -------------------------------------------------------------------------
-// BEGIN STACK POINTER ANALYSIS
-// -------------------------------------------------------------------------
-
-class AbstractLatticeValue {
-private:
-  std::pair<u_int8_t, u_int64_t> t;
-
-public:
-  bool isTop() const { return this->t.first == 0; }
-  bool isFPOffset() const { return this->t.first == 1; }
-  bool isBottom() const { return this->t.first == 2; }
-
-  u_int64_t getFPOffset() const {
-    assert(this->t.first == 1);
-    return this->t.second;
-  }
-
-  /// Create an object that represents no precision at all
-  static AbstractLatticeValue makeTop() {
-    AbstractLatticeValue v;
-    v.t = {0, 0};
-    return v;
-  }
-
-  /// Create an object that represents a specific frame pointer offset
-  static AbstractLatticeValue makeFPOffset(u_int64_t ofst) {
-    AbstractLatticeValue v;
-    v.t = {1, ofst};
-    return v;
-  }
-
-  /// Create an object representing the most precision (i.e. can assign
-  /// arbitrary frame pointer values, as desired)
-  static AbstractLatticeValue makeBottom() {
-    AbstractLatticeValue v;
-    v.t = {2, 0};
-    return v;
-  }
-
-  bool equals(const AbstractLatticeValue &other) const {
-    if (other.isTop() && this->isTop()) {
-      return true;
-    } else if (other.isBottom() && this->isBottom()) {
-      return true;
-    } else if (other.isFPOffset() && this->isFPOffset()) {
-      return other.getFPOffset() == this->getFPOffset();
-    } else {
-      return false;
-    }
-  }
-
-  AbstractLatticeValue merge(const AbstractLatticeValue &other) const {
-
-    if (this->isTop() || other.isTop()) {
-      return AbstractLatticeValue::makeTop();
-    } else if (this->isBottom()) {
-      return other;
-    } else if (other.isBottom()) {
-      return *this;
-    } else if (this->isFPOffset() && other.isFPOffset()) {
-      if (this->getFPOffset() == other.getFPOffset()) {
-        return other;
-      } else {
-        // if offsets diverge, then lose all precision
-        return AbstractLatticeValue::makeTop();
-      }
-    } else {
-      // unreachable!()
-      assert(false);
-    }
-  }
-};
-
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const AbstractLatticeValue &alv) {
-  if (alv.isTop()) {
-    os << "Top";
-  } else if (alv.isBottom()) {
-    os << "Bottom";
-  } else if (alv.isFPOffset()) {
-    os << "Constant(" << alv.getFPOffset() << ")";
-  } else if (alv.isFPOffset()) {
-    os << "FPOffset(" << alv.getFPOffset() << ")";
-  }
-  return os;
-}
-
-class Variable2ALV {
-
-private:
-  DenseMap<llvm::Value *, AbstractLatticeValue> t;
-
-public:
-  static Variable2ALV initialize(llvm::Function &F) {
-    Variable2ALV v2avl_obj;
-    DenseMap<llvm::Value *, AbstractLatticeValue> v2avl_map;
-    for (auto &BB : F) {
-      for (auto &I : BB) {
-        if (isTypeWithPointers(I.getType())) {
-          llvm::Value *V = &I;
-          v2avl_map[V] = AbstractLatticeValue::makeBottom();
-        }
-      }
-    }
-    v2avl_obj.t = v2avl_map;
-    return v2avl_obj;
-  }
-
-  void print_v2alv() const {
-    llvm::outs() << "{\n";
-    for (auto &[key, value] : this->t) {
-      llvm::outs() << "    insn: " << *key << " with abstract value: " << value
-                   << "\n";
-    }
-    llvm::outs() << "}\n";
-  }
-
-  Variable2ALV join(const Variable2ALV &other) const {
-    Variable2ALV new_v2alv;
-    DenseMap<llvm::Value *, AbstractLatticeValue> new_v2alv_map;
-
-    auto &other_map = other.t;
-    // go through one of the maps, and merge each binding with the analogous
-    // binding found in the other map
-    for (auto &[this_key, this_value] : this->t) {
-      auto other_value_iterator = other_map.find(this_key);
-      if (other_value_iterator != other_map.end()) {
-        auto &other_value = other_value_iterator->second;
-        auto new_value = this_value.merge(other_value);
-        new_v2alv_map[this_key] = new_value;
-      } else {
-        // the two maps should bind the same keys; unreachable
-        assert(false);
-      }
-    }
-    new_v2alv.t = new_v2alv_map;
-    return new_v2alv;
-  }
-
-  /// Compares two maps from variables to abstract lattice values. Returns true
-  /// if and only if every binding in one is present in the other and if the
-  /// sizes are equal
-  bool is_identical(const Variable2ALV &other) const {
-    for (auto &[this_key, this_value] : this->t) {
-      auto t_binding_in_o_it = other.t.find(this_key);
-      if (t_binding_in_o_it != other.t.end()) {
-        auto t_binding_in_o = t_binding_in_o_it->second;
-        if (!(this_value.equals(t_binding_in_o))) {
-          return false;
-        }
-      }
-    }
-    return (this->t.size() == other.t.size());
-  }
-
-  /// In-place modify a Var2ALV map to deal with an instruction
-  void transfer_insn(Instruction &insn,
-                     DenseMap<AllocaInst *, u_int64_t> &alloca2offset) {
-    switch (insn.getOpcode()) {
-    case Instruction::Alloca: {
-      auto *alloca_insn = dyn_cast<AllocaInst>(&insn);
-      assert(alloca_insn && "Not an Alloca inst?");
-      auto &map = this->t;
-      if (alloca_insn->isStaticAlloca()) {
-        auto fp_offset_iterator = alloca2offset.find(alloca_insn);
-        if (fp_offset_iterator != alloca2offset.end()) {
-          u_int64_t fp_offset = fp_offset_iterator->second;
-          map[&insn] = AbstractLatticeValue::makeFPOffset(fp_offset);
-        } else {
-          // should have inserted every static alloca into map; unreachable
-          assert(false);
-        }
-      } else {
-        map[&insn] = AbstractLatticeValue::makeTop();
-      }
-    } break;
-
-    case Instruction::GetElementPtr: {
-      auto *gep_insn = dyn_cast<GetElementPtrInst>(&insn);
-      assert(gep_insn && "Not a GEP inst?");
-      auto &map = this->t;
-      if (gep_insn->getNumOperands() == 3) {
-        if (auto *first_index =
-                dyn_cast<ConstantInt>(gep_insn->getOperand(1))) {
-          if (auto *second_index =
-                  dyn_cast<ConstantInt>(gep_insn->getOperand(2))) {
-            if (first_index->getZExtValue() == 0) {
-              if (auto base_pointer =
-                      dyn_cast<AllocaInst>(gep_insn->getOperand(0))) {
-                auto base_pointer_offset_it = alloca2offset.find(base_pointer);
-                if (base_pointer_offset_it != alloca2offset.end()) {
-                  auto base_pointer_offset = base_pointer_offset_it->second;
-                  auto second_index_const_value = second_index->getZExtValue();
-                  map[&insn] = AbstractLatticeValue::makeFPOffset(
-                      base_pointer_offset + second_index_const_value);
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-      // remove all precision if the second index is a variable, for example
-      map[&insn] = AbstractLatticeValue::makeTop();
-    } break;
-
-    case BitCastInst::BitCast: {
-      auto *bc_insn = dyn_cast<BitCastInst>(&insn);
-      assert(bc_insn && "Not a BitCast inst?");
-
-      // here, we simply want to flow the abstract value associated with the
-      // operand (if it exists) into the result register
-      auto &map = this->t;
-      if (isTypeWithPointers(bc_insn->getType())) {
-        llvm::Value *operand = bc_insn->getOperand(0);
-        auto operand_alv_iterator = map.find(operand);
-        if (operand_alv_iterator != map.end()) {
-          auto operand_alv = operand_alv_iterator->second;
-          map[&insn] = operand_alv;
-          break;
-        } else {
-          map[&insn] = AbstractLatticeValue::makeTop();
-        }
-      }
-    } break;
-
-    default: {
-      if (isTypeWithPointers(insn.getType())) {
-        auto &map = this->t;
-
-        // lose all precision for every other pointer assignment (e.g. result
-        // of malloc call)
-        map[&insn] = AbstractLatticeValue::makeTop();
-      }
-    } break;
-    }
-  }
-};
-
-class StackPointerAnalysis {
-private:
-  DenseMap<llvm::BasicBlock *, Variable2ALV> ins;
-  DenseMap<llvm::BasicBlock *, Variable2ALV> outs;
-
-  /// Create a map from static alloca instructions to offsets from the frame
-  /// pointer
-  static DenseMap<llvm::AllocaInst *, u_int64_t>
-  initialize_alloca_offsets(Function &F) {
-    DenseMap<AllocaInst *, unsigned long> stack_offset_map;
-    u_int64_t offset = 0;
-    auto DL = F.getParent()->getDataLayout();
-    for (auto &BB : F) {
-      for (auto &I : BB) {
-        if (auto *AI = dyn_cast<AllocaInst>(&I)) {
-          if (AI->isStaticAlloca()) {
-            u_int64_t size_bytes = *AI->getAllocationSizeInBits(DL) / 8;
-            bool is_array_alloc = AI->isArrayAllocation();
-            PointerType *t = AI->getType();
-            stack_offset_map[AI] = offset;
-            offset = offset + size_bytes;
-          }
-        }
-      }
-    }
-    return stack_offset_map;
-  }
-
-public:
-  /// Create an empty object that represents the analysis before the worklist
-  /// algorithm is run
-  static StackPointerAnalysis create_empty_analysis(Function &F) {
-    StackPointerAnalysis v;
-    DenseMap<llvm::BasicBlock *, Variable2ALV> ins, outs;
-    for (auto &BB : F) {
-      v.ins[&BB] = Variable2ALV::initialize(F);
-      v.outs[&BB] = Variable2ALV::initialize(F);
-    }
-    return v;
-  }
-
-  /// Modifies the (presumably empty) object in-place to produce ins/outs
-  /// representing a flow-sensitive analysis of pointer variables that point
-  /// to specific locations on the stack
-  void perform_analysis(Function &F) {
-
-    // map every static alloca instruction to offsets from the frame pointer
-    auto alloca2offset = StackPointerAnalysis::initialize_alloca_offsets(F);
-
-    // initialize the worklist queue
-    std::queue<BasicBlock *> BBWorklist;
-    auto *BB = &F.getEntryBlock();
-    BBWorklist.push(BB);
-
-    // worklist algorithm
-    while (BBWorklist.size() != 0) {
-
-      // get head of queue
-      BB = BBWorklist.front();
-      BBWorklist.pop();
-
-      // perform JOIN on outputs of predecessors of this BB
-      auto joined = Variable2ALV::initialize(F);
-      for (auto it = pred_begin(BB), et = pred_end(BB); it != et; ++it) {
-        llvm::BasicBlock *Pred = *it;
-        auto pred_out = this->outs[Pred];
-        auto new_map = joined.join(pred_out);
-        joined = new_map;
-      }
-
-      this->ins[BB] = joined;
-
-      // perform transfer function
-      for (auto &I : *BB) {
-        joined.transfer_insn(I, alloca2offset);
-      }
-
-      // add successors iff previous output of transfer function is not
-      // identical to the one just produced
-      auto &prev_out = this->outs[BB];
-      if (!joined.is_identical(prev_out)) {
-        for (auto SI = succ_begin(BB), SE = succ_end(BB); SI != SE; ++SI) {
-          BasicBlock *NextBB = *SI;
-          BBWorklist.push(NextBB);
-        }
-      }
-      this->outs[BB] = joined;
-    }
-  }
-
-  void print_analysis(Function &F) const {
-    for (auto &BB : F) {
-      auto bb_in_it = this->ins.find(&BB);
-      auto bb_out_it = this->outs.find(&BB);
-      if ((bb_in_it != this->ins.end()) && (bb_out_it != this->outs.end())) {
-        auto &bb_in = bb_in_it->second;
-        auto &bb_out = bb_out_it->second;
-
-        bb_in.print_v2alv();
-        llvm::outs() << "Basic block :" << BB << "\n";
-        bb_out.print_v2alv();
-        llvm::outs() << "\n\n\n\n";
-
-      } else {
-        // all BBs should be mapped
-        assert(false);
-      }
-    }
-  }
-};
-
-// -------------------------------------------------------------------------
-// END STACK POINTER ANALYSIS
-// -------------------------------------------------------------------------
 
 void SoftBoundCETSPass::gatherBaseBoundPass1(Function &F) {
   // Scan over the pointer arguments and introduce metadata loads from the
@@ -6901,10 +6710,10 @@ bool SoftBoundCETSPass::runOnModule(Module &M) {
 
     // pointerAliasing(F);
 
-    // perform stack pointer analysis
-    auto spa = StackPointerAnalysis::create_empty_analysis(F);
-    spa.perform_analysis(F);
-    spa.print_analysis(F);
+    // // perform stack pointer analysis
+    // auto spa = StackPointerAnalysis::create_empty_analysis(F);
+    // spa.perform_analysis(F);
+    // spa.print_analysis(F);
 
     //
     // Iterate over all basic block and then each insn within a basic
