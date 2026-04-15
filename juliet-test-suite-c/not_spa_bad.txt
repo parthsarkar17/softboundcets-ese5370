@@ -1,0 +1,114 @@
+
+===== EXIT STATUS =====
+SIGABRT     2217
+139           34
+
+===== DATAFLOW VARIANTS =====
+ VAR    SIGABRT       139
+  1:         65         2
+  2:         65         2
+  3:         65         2
+  4:         65         2
+  5:         65         2
+  6:         65         2
+  7:         65         2
+  8:         65         2
+  9:         65         2
+ 10:         65         2
+ 11:         65         2
+ 13:         65         2
+ 14:         65         2
+ 15:         65         2
+ 16:         65         2
+ 17:         65         2
+ 18:         65         2
+ 21:         18         0
+ 22:         18         0
+ 31:         65         0
+ 32:         65         0
+ 34:         65         0
+ 41:         65         0
+ 42:         18         0
+ 44:         65         0
+ 45:         65         0
+ 51:         65         0
+ 52:         65         0
+ 53:         65         0
+ 54:         65         0
+ 61:         18         0
+ 63:         65         0
+ 64:         65         0
+ 65:         65         0
+ 66:         65         0
+ 67:         65         0
+ 68:         65         0
+
+===== FUNCTIONAL VARIANTS =====
+                                 SIGABRT       139
+CWE129_large                          37         0
+CWE131_loop                           33         0
+CWE131_memcpy                         33         0
+CWE131_memmove                        33         0
+CWE135                                37         0
+CWE193_char_alloca_cpy                33         0
+CWE193_char_alloca_loop               33         0
+CWE193_char_alloca_memcpy             33         0
+CWE193_char_alloca_memmove            33         0
+CWE193_char_alloca_ncpy               33         0
+CWE193_char_declare_cpy               33         0
+CWE193_char_declare_loop              33         0
+CWE193_char_declare_memcpy            33         0
+CWE193_char_declare_memmove           33         0
+CWE193_char_declare_ncpy              33         0
+CWE805_char_alloca_loop               33         0
+CWE805_char_alloca_memcpy             33         0
+CWE805_char_alloca_memmove            33         0
+CWE805_char_alloca_ncat               33         0
+CWE805_char_alloca_ncpy               33         0
+CWE805_char_alloca_snprintf           33         0
+CWE805_char_declare_loop              33         0
+CWE805_char_declare_memcpy            33         0
+CWE805_char_declare_memmove           33         0
+CWE805_char_declare_ncat              33         0
+CWE805_char_declare_ncpy              33         0
+CWE805_char_declare_snprintf          33         0
+CWE805_int64_t_alloca_loop            33         0
+CWE805_int64_t_alloca_memcpy          33         0
+CWE805_int64_t_alloca_memmove         33         0
+CWE805_int64_t_declare_loop           33         0
+CWE805_int64_t_declare_memcpy         33         0
+CWE805_int64_t_declare_memmove        33         0
+CWE805_int_alloca_loop                33         0
+CWE805_int_alloca_memcpy              33         0
+CWE805_int_alloca_memmove             33         0
+CWE805_int_declare_loop               33         0
+CWE805_int_declare_memcpy             33         0
+CWE805_int_declare_memmove            33         0
+CWE805_struct_alloca_loop             33         0
+CWE805_struct_alloca_memcpy           33         0
+CWE805_struct_alloca_memmove          33         0
+CWE805_struct_declare_loop            33         0
+CWE805_struct_declare_memcpy          33         0
+CWE805_struct_declare_memmove         33         0
+CWE806_char_alloca_loop               37         0
+CWE806_char_alloca_memcpy             37         0
+CWE806_char_alloca_memmove            37         0
+CWE806_char_alloca_ncat               37         0
+CWE806_char_alloca_ncpy               37         0
+CWE806_char_alloca_snprintf           37         0
+CWE806_char_declare_loop              37         0
+CWE806_char_declare_memcpy            37         0
+CWE806_char_declare_memmove           37         0
+CWE806_char_declare_ncat              37         0
+CWE806_char_declare_ncpy              37         0
+CWE806_char_declare_snprintf          37         0
+char_type_overrun_memcpy               0        17
+char_type_overrun_memmove              0        17
+dest_char_alloca_cat                  33         0
+dest_char_alloca_cpy                  33         0
+dest_char_declare_cat                 33         0
+dest_char_declare_cpy                 33         0
+src_char_alloca_cat                   37         0
+src_char_alloca_cpy                   37         0
+src_char_declare_cat                  37         0
+src_char_declare_cpy                  37         0
