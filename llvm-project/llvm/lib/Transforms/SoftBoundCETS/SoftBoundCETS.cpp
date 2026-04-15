@@ -750,7 +750,7 @@ private:
   }
 
 public:
-  AbstractLatticeValue query_ins(Instruction *I) const {
+  AbstractLatticeValue query_outs(Instruction *I) const {
     auto *parentBB = I->getParent();
     auto v2alv_iterator = outs.find(parentBB);
     if (v2alv_iterator != this->outs.end()) {
@@ -3396,7 +3396,7 @@ void SoftBoundCETSPass::addSpatialChecks(
       if (Instruction *ptr_operand_instr =
               dyn_cast<llvm::Instruction>(pointer_operand)) {
 
-        auto spa_alv = spa.query_ins(ptr_operand_instr);
+        auto spa_alv = spa.query_outs(ptr_operand_instr);
 
         if (spa_alv.isFPOffset()) {
           auto base = spa_alv.getFPOffsetBase();
@@ -3405,7 +3405,7 @@ void SoftBoundCETSPass::addSpatialChecks(
           auto size = spa_alv.getFPOffsetSize();
 
           if ((base <= ptr) && (ptr + size <= bound)) {
-            // llvm::outs() << "elided load/store instruction: "
+            // llvm::outs() << "elided load/store instruction for: "
             //              << ptr_operand_instr << " with form "
             //              << *ptr_operand_instr << " with ALV: " << spa_alv
             //              << "\n";
@@ -3413,6 +3413,8 @@ void SoftBoundCETSPass::addSpatialChecks(
           }
         }
       }
+
+      // end parth added
 
       // FIXME: Add more comments here Iterate over the uses
 
