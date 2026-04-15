@@ -4086,6 +4086,8 @@ void SoftBoundCETSPass::addDereferenceChecks(
     assert(bb && "Not a BasicBlock?");
     bb_worklist.pop();
 
+    // llvm::outs() << *bb << "\n";
+
     if (bb_visited.count(bb)) {
       /* Block already visited */
       continue;

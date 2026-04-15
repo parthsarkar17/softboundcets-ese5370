@@ -3,9 +3,11 @@
 #include <stdio.h>
 #include <assert.h>
 
+
+const int RANDOM_INTEGER = 37;
+
 int main()
 {
-
     // these arrays live next to each other on the stack
     int array1[] = {1, 2, 3, 4};
     int array2[] = {5, 6, 7, 8};
@@ -22,10 +24,11 @@ int main()
     // ensure the base-and-bounds check goes through the metadata table,
     // and not base-and-bound variables "inlined" into the function body
     int *array1_alias = array1_ptr[0];
-    *(array1_alias + 4) = 37;
+    *(array1_alias - 1) = RANDOM_INTEGER;
+    *(array1_alias + 4) = RANDOM_INTEGER;
 
     // verify change
-    int attack_success = (array2[0] == 37);
+    int attack_success = (array2[0] == RANDOM_INTEGER) || (array2[3] == RANDOM_INTEGER);
     assert(attack_success);
 
     int *arrays[] = {array1, array2};
