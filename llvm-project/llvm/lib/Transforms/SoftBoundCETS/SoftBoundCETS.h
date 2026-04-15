@@ -273,7 +273,7 @@ private:
   bool isAllocaPresent(Function *);
   void gatherBaseBoundPass1(Function &F);
   void gatherBaseBoundPass2(Function &F);
-  void addDereferenceChecks(Function *func, StackPointerAnalysis &spa);
+  void addDereferenceChecks(Function *func);
   bool checkIfFunctionOfInterest(Function *);
   bool isFunctionNotToInstrument(const StringRef &str);
   bool isIgnorableLLVMIntrinsic(const StringRef &str);

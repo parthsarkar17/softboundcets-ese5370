@@ -520,11 +520,13 @@ private:
 public:
   /// Find the ALV associated with a given variable. If unmapped, return TOP.
   AbstractLatticeValue query(llvm::Instruction *I) const {
-    auto alv_iterator = this->t.find(I);
-    if (alv_iterator == this->t.end()) {
+    auto V = llvm::cast<llvm::Value>(I);
+    auto alv_iterator = this->t.find(V);
+    if (alv_iterator != this->t.end()) {
       auto alv_clone = alv_iterator->second;
       return alv_clone;
     } else {
+      llvm::outs() << "not actually in map\n";
       return AbstractLatticeValue::makeTop();
     }
   }
@@ -551,8 +553,8 @@ public:
   void print_v2alv() const {
     llvm::outs() << "{\n";
     for (auto &[key, value] : this->t) {
-      llvm::outs() << "    insn: " << *key << " with abstract value: " << value
-                   << "\n";
+      llvm::outs() << "    insn: " << key << " with form " << *key
+                   << " with abstract value: " << value << "\n";
     }
     llvm::outs() << "}\n";
   }
@@ -751,8 +753,8 @@ private:
 public:
   AbstractLatticeValue query_ins(Instruction *I) const {
     auto *parentBB = I->getParent();
-    auto v2alv_iterator = ins.find(parentBB);
-    if (v2alv_iterator != this->ins.end()) {
+    auto v2alv_iterator = outs.find(parentBB);
+    if (v2alv_iterator != this->outs.end()) {
       auto &var2alv = v2alv_iterator->second;
       auto alv = var2alv.query(I);
       return alv;
@@ -3382,23 +3384,38 @@ void SoftBoundCETSPass::addSpatialChecks(
     }
 
     if (BOUNDSCHECKOPT) {
+      printf("in bounds checking\n");
       // Enable dominator based dereference check optimization only when
       // suggested
 
       if (FDCE_map.count(load_store)) {
+        printf("returned before my analysis could run\n");
         return;
       }
 
       // parth added:
       // use the stack analysis to elide bounds checking for pointers determined
       // to point to specific locations on the stack
-      // if (Instruction *ptr_operand_instr =
-      //         dyn_cast<llvm::Instruction>(pointer_operand)) {
-      //   auto spa_alv = spa.query_ins(ptr_operand_instr);
-      //   if (spa_alv.isFPOffset()) {
-      //     return;
-      //   }
-      // }
+      if (Instruction *ptr_operand_instr =
+              dyn_cast<llvm::Instruction>(pointer_operand)) {
+
+        auto spa_alv = spa.query_ins(ptr_operand_instr);
+
+        if (spa_alv.isFPOffset()) {
+          auto base = spa_alv.getFPOffsetBase();
+          auto bound = spa_alv.getFPOffsetBound();
+          auto ptr = spa_alv.getFPOffset();
+          auto size = spa_alv.getFPOffsetSize();
+
+          if ((base <= ptr) && (ptr + size <= bound)) {
+            llvm::outs() << "elided load/store instruction: "
+                         << ptr_operand_instr << " with form "
+                         << *ptr_operand_instr << " with ALV: " << spa_alv
+                         << "\n";
+            return;
+          }
+        }
+      }
 
       // FIXME: Add more comments here Iterate over the uses
 
@@ -3878,9 +3895,10 @@ void SoftBoundCETSPass::addTemporalChecks(Instruction *load_store,
 }
 
 void SoftBoundCETSPass::addDereferenceChecks(
-    Function *func,
+    Function *func
     // now add parth dataflow analyses objects
-    StackPointerAnalysis &spa) {
+    // StackPointerAnalysis &spa
+) {
   Function &F = *func;
 
   if (func->isVarArg())
@@ -4039,6 +4057,13 @@ void SoftBoundCETSPass::addDereferenceChecks(
 #endif
 
   m_dominator_tree = &getAnalysis<DominatorTreeWrapperPass>(*func).getDomTree();
+
+  // perform stack pointer analysis
+  auto spa = StackPointerAnalysis::create_empty_analysis(F);
+  spa.perform_analysis(F);
+  spa.print_analysis(F);
+
+  llvm::outs() << "now analyzing " << func->getName() << "\n";
 
   /* intra-procedural load dererference check elimination map */
   std::map<Value *, int> func_deref_check_elim_map;
@@ -7050,10 +7075,10 @@ bool SoftBoundCETSPass::runOnModule(Module &M) {
 
     // pointerAliasing(F);
 
-    // perform stack pointer analysis
-    auto spa = StackPointerAnalysis::create_empty_analysis(F);
-    spa.perform_analysis(F);
-    spa.print_analysis(F);
+    // // perform stack pointer analysis
+    // auto spa = StackPointerAnalysis::create_empty_analysis(F);
+    // spa.perform_analysis(F);
+    // spa.print_analysis(F);
 
     //
     // Iterate over all basic block and then each insn within a basic
@@ -7062,7 +7087,7 @@ bool SoftBoundCETSPass::runOnModule(Module &M) {
     //
     gatherBaseBoundPass1(F);
     gatherBaseBoundPass2(F);
-    addDereferenceChecks(&F, spa);
+    addDereferenceChecks(&F);
 
     llvm::StringRef PrintFns = ClPrintInstrumentedFunctions;
     if (ClPrintAllInstrumentedFunctions || PrintFns.contains(F.getName()))
