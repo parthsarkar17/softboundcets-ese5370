@@ -6682,7 +6682,7 @@ bool SoftBoundCETSPass::runOnModule(Module &M) {
   initializeInitFunctions(M);
   initializeDereferenceCheckHandlers(M);
   initializeMetadataHandlers(M);
-  insertGlobalCtor(M);
+  insertGlobalCtor(M); // inserts a instruction to call __softboundcets_init
   transformAndRedirectMain(M);
   identifyFuncToTrans(M);
   addMetadataToGlobals(M);

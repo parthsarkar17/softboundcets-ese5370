@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+const int AFTER_ATTACK = 1;
+const int BEFORE_ATTACK = 0;
+
 typedef struct {
     void *base;
     void *bound;
@@ -45,13 +48,13 @@ void overwrite_metadata_map(const void *addr_of_ptr, int array_len)
     __shadow_softboundcets_metadata_t *entry = &(*(secondary_trie_table + secondary_index));
 
     // log original privilege
-    log_metadata_changes(entry, 0);
+    log_metadata_changes(entry, BEFORE_ATTACK);
 
     // extend privilege by just 4 bytes in each direction
     entry->bound = entry->base + ((array_len + 1) * sizeof(int));
     entry->base = entry->base - (sizeof(int));
 
     // log modified privilege
-    log_metadata_changes(entry, 1);
+    log_metadata_changes(entry, AFTER_ATTACK);
 }
 

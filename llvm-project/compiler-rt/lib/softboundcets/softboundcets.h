@@ -218,6 +218,8 @@ static const size_t __SOFTBOUNDCETS_TRIE_SECONDARY_TABLE_ENTRIES =
                             __visibility__("default"), retain, used))
 #endif
 
+__WEAK__ extern u_int64_t silly_xor_key;
+
 __WEAK__ extern __softboundcets_metadata_t **__softboundcets_trie_primary_table;
 
 __WEAK__ extern size_t *__softboundcets_shadow_stack_ptr;
@@ -230,14 +232,13 @@ __attribute__((__weak__))
 #if !__SOFTBOUNDCETS_CONTINUE_ON_ABORT
 __attribute__((__noreturn__))
 #endif
-extern void
-__softboundcets_abort(void);
+extern void __softboundcets_abort(void);
 
 __WEAK__ extern void __softboundcets_printf(const char *str, ...);
 __WEAK__ extern void __softboundcets_debug_printf(const char *str, ...);
 __WEAK__ extern void __softboundcets_error_printf(const char *str, ...);
 
-__attribute__((always_inline,__weak__)) void
+__attribute__((always_inline, __weak__)) void
 __softboundcets_log_message(int level, const char *str, ...);
 
 extern size_t *__softboundcets_global_lock;

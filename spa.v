@@ -1,6 +1,26 @@
 From Stdlib Require Import Arith. Import Nat. Import Bool.
 From Stdlib Require Import Lia.
 
+Inductive bit : Type :=
+  | zero
+  | one.
+ 
+Definition xor (b1 b2 : bit) : bit :=
+  match b1 with
+    | zero => b2
+    | one => match b2 with
+        | zero => one
+        | one => zero
+        end
+    end.
+
+Theorem xor_sandwich : forall b1 b2 b3, 
+  xor (xor (xor b1 b2) b3) b2 = xor b1 b3.
+Proof.
+  intros. destruct b1; destruct b2; destruct b3; reflexivity.
+Qed.
+
+
 (** These are the "abstract lattice values" (ALVs) that each variable will be mapped to during/after the analysis, at each program point. *)
 Inductive alv : Type :=
   | top

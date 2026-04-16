@@ -189,6 +189,9 @@ void __softboundcets_init(void) {
   size_t length_trie = (__SOFTBOUNDCETS_TRIE_PRIMARY_TABLE_ENTRIES) *
                        sizeof(__softboundcets_metadata_t *);
 
+  // parth added
+  silly_xor_key = 0xdeadbeef;
+
   __softboundcets_trie_primary_table = (__softboundcets_metadata_t **)mmap(
       0, length_trie, PROT_READ | PROT_WRITE, SOFTBOUNDCETS_MMAP_FLAGS, -1, 0);
   assert(__softboundcets_trie_primary_table != (void *)-1);
@@ -986,14 +989,14 @@ __RT_VISIBILITY void __softboundcets_metadata_store(void *addr_of_ptr,
 
 #if __SOFTBOUNDCETS_SPATIAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
-  entry_ptr->base = base;
-  entry_ptr->bound = bound;
+  entry_ptr->base = base ^ silly_xor_key;
+  entry_ptr->bound = bound ^ silly_xor_key;
 
 #endif
 #if __SOFTBOUNDCETS_TEMPORAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
-  entry_ptr->key = key;
-  entry_ptr->lock = lock;
+  entry_ptr->key = key ^ silly_xor_key;
+  entry_ptr->lock = lock ^ silly_xor_key;
 
 #endif
 
