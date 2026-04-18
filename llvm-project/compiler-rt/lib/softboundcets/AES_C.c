@@ -248,7 +248,7 @@ void EncryptBlock(struct aes *aes_obj, const unsigned char in[], unsigned char o
 
   SubBytes(state);
   ShiftRows(state);
-  AddRoundKey(state, roundKeys + 4 * 4 * 4);
+  AddRoundKey(state, roundKeys + aes_obj->nr * 4 * 4);
 
   for (i = 0; i < 4; i++) {
     for (j = 0; j < 4; j++) {
@@ -265,10 +265,13 @@ unsigned char *EncryptECB(struct aes * aes_obj, const unsigned char in[], unsign
   CheckLength(aes_obj, inLen);
   unsigned char *out = malloc(inLen * sizeof(unsigned char));
   unsigned char *roundKeys = malloc(4 * 4 * (aes_obj->nr +1) * sizeof(unsigned char));
+//   printf("before key expansion\n");
   KeyExpansion(aes_obj, key, roundKeys);
+//   printf("before encrypt block for loop\n");
   for (unsigned int i = 0; i < inLen; i += aes_obj->block_bytes_len) {
     EncryptBlock(aes_obj, in + i, out + i, roundKeys);
   }
+//   printf("after for loop\n");
   free(roundKeys);
   return out;
 }
