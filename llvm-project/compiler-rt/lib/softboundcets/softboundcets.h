@@ -106,6 +106,11 @@ typedef struct {
 
 } __softboundcets_metadata_t;
 
+typedef struct {
+  __softboundcets_metadata_t *real_ptr;
+  void *dummy_ptr;
+} fat_softboundcets_metadata_t;
+
 #if defined(__APPLE__)
 #define SOFTBOUNDCETS_MMAP_FLAGS (MAP_ANON | MAP_NORESERVE | MAP_PRIVATE)
 #else
@@ -218,7 +223,8 @@ static const size_t __SOFTBOUNDCETS_TRIE_SECONDARY_TABLE_ENTRIES =
                             __visibility__("default"), retain, used))
 #endif
 
-__WEAK__ extern __softboundcets_metadata_t **__softboundcets_trie_primary_table;
+__WEAK__ extern fat_softboundcets_metadata_t
+    *__softboundcets_trie_primary_table;
 
 __WEAK__ extern size_t *__softboundcets_shadow_stack_ptr;
 __WEAK__ extern size_t *__softboundcets_temporal_space_begin;

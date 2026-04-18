@@ -71,6 +71,7 @@
 #include <glob.h>
 #include <grp.h>
 #include <limits.h>
+#include <malloc.h>
 #include <math.h>
 #include <netdb.h>
 #include <pwd.h>
@@ -81,7 +82,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
-#include <malloc.h>
 
 #include <langinfo.h>
 #include <regex.h>
@@ -201,30 +201,34 @@ __RT_VISIBILITY void __softboundcets_store_return_metadata(void *base,
 
 #if __SOFTBOUNDCETS_SPATIAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
-// Loads the base and bound from the shadow stack for the argument at the given position and store
-// them at <ptr>_base and <ptr>_bounds.
-#define LOAD_PTR_BOUNDS(pos, ptr)                                                              \
-  [[ maybe_unused ]] sbcets_base_t ptr##_base = __softboundcets_load_base_shadow_stack(pos);   \
-  [[ maybe_unused ]] sbcets_bound_t ptr##_bound = __softboundcets_load_bound_shadow_stack(pos);
+// Loads the base and bound from the shadow stack for the argument at the given
+// position and store them at <ptr>_base and <ptr>_bounds.
+#define LOAD_PTR_BOUNDS(pos, ptr)                                              \
+  [[maybe_unused]] sbcets_base_t ptr##_base =                                  \
+      __softboundcets_load_base_shadow_stack(pos);                             \
+  [[maybe_unused]] sbcets_bound_t ptr##_bound =                                \
+      __softboundcets_load_bound_shadow_stack(pos);
 
-// Since bounds checking every pointer may lead to a significant loss in performance, those checks
-// need to be enabled using a macro.
+// Since bounds checking every pointer may lead to a significant loss in
+// performance, those checks need to be enabled using a macro.
 #if __SOFTBOUNDCETS_CHECK_LOADS
 
-// Check if a pointer dereference of a given size is in bounds and generate an appropriate error
-// message if not.
-// This requires both base and bounds to be defined (see LOAD_PTR_BOUNDS).
-#define CHECK_PTR_BOUNDS_LOAD_ONLY(ptr, size)                                         \
-  __softboundcets_spatial_load_dereference_check(ptr##_base, ptr##_bound, (void*)ptr, size);
+// Check if a pointer dereference of a given size is in bounds and generate an
+// appropriate error message if not. This requires both base and bounds to be
+// defined (see LOAD_PTR_BOUNDS).
+#define CHECK_PTR_BOUNDS_LOAD_ONLY(ptr, size)                                  \
+  __softboundcets_spatial_load_dereference_check(ptr##_base, ptr##_bound,      \
+                                                 (void *)ptr, size);
 
-// Check if a string function can properly dereference the pointer when it is interpreted as a
-// string.
-// This requires the base and bound pointers to be defined (See LOAD_PTR_BOUNDS).
-#define CHECK_STRING_BOUNDS_LOAD_ONLY(ptr)                                                          \
-  if (!memchr(ptr, '\0', (char*)ptr##_bound - (char*)ptr)) {                                        \
-    __softboundcets_error_printf("In string load dereference check: base=%zx, bound=%zx, ptr=%zx",  \
-      ptr##_base, ptr##_bound, ptr);                                                                \
-    __softboundcets_abort();                                                                        \
+// Check if a string function can properly dereference the pointer when it is
+// interpreted as a string. This requires the base and bound pointers to be
+// defined (See LOAD_PTR_BOUNDS).
+#define CHECK_STRING_BOUNDS_LOAD_ONLY(ptr)                                     \
+  if (!memchr(ptr, '\0', (char *)ptr##_bound - (char *)ptr)) {                 \
+    __softboundcets_error_printf(                                              \
+        "In string load dereference check: base=%zx, bound=%zx, ptr=%zx",      \
+        ptr##_base, ptr##_bound, ptr);                                         \
+    __softboundcets_abort();                                                   \
   }
 
 #else // __SOFTBOUNDCETS_CHECK_LOADS
@@ -239,125 +243,137 @@ __RT_VISIBILITY void __softboundcets_store_return_metadata(void *base,
 
 #endif // __SOFTBOUNDCETS_CHECK_LOADS
 
-// Check if a pointer dereference is in bounds and raise an appropriate error if not.
-// This macro requires base and bound for the pointer to be in scope (see LOAD_PTR_BOUNDS)
-#define CHECK_PTR_BOUNDS_STORE_ONLY(ptr, size)                                        \
-  __softboundcets_spatial_store_dereference_check(ptr##_base, ptr##_bound, ptr, size);
+// Check if a pointer dereference is in bounds and raise an appropriate error if
+// not. This macro requires base and bound for the pointer to be in scope (see
+// LOAD_PTR_BOUNDS)
+#define CHECK_PTR_BOUNDS_STORE_ONLY(ptr, size)                                 \
+  __softboundcets_spatial_store_dereference_check(ptr##_base, ptr##_bound,     \
+                                                  ptr, size);
 
-// Check if a string function can access this pointer correctly, that is that it contains a null
-// terminator within bounds.
-// This macro requires the appropriate base and bound to be in scope (See LOAD_PTR_BOUNDS)
-#define CHECK_STRING_BOUNDS_STORE_ONLY(ptr)                                                         \
-  if (!memchr(ptr, '\0', (char*)ptr##_bound - (char*)ptr)) {                                        \
-    __softboundcets_error_printf("In string store dereference check: base=%zx, bound=%zx, ptr=%zx", \
-      ptr##_base, ptr##_bound, ptr);                                                                \
-    __softboundcets_abort();                                                                        \
+// Check if a string function can access this pointer correctly, that is that it
+// contains a null terminator within bounds. This macro requires the appropriate
+// base and bound to be in scope (See LOAD_PTR_BOUNDS)
+#define CHECK_STRING_BOUNDS_STORE_ONLY(ptr)                                    \
+  if (!memchr(ptr, '\0', (char *)ptr##_bound - (char *)ptr)) {                 \
+    __softboundcets_error_printf(                                              \
+        "In string store dereference check: base=%zx, bound=%zx, ptr=%zx",     \
+        ptr##_base, ptr##_bound, ptr);                                         \
+    __softboundcets_abort();                                                   \
   }
 
 #else // __SOFTBOUNDCETS_SPATIAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
-// Since bounds checking is disabled, this macro introduces dummy variables for a parameter's base
-// and bounds pointers.
+// Since bounds checking is disabled, this macro introduces dummy variables for
+// a parameter's base and bounds pointers.
 
-// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 of __SOFTBOUND_SPATIAL_TEMPORAL=1.
-#define LOAD_PTR_BOUNDS(pos, ptr)                    \
-  [[ maybe_unused ]] void *ptr##_base = nullptr;     \
-  [[ maybe_unused ]] void *ptr##_bound = nullptr;
+// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 of
+// __SOFTBOUND_SPATIAL_TEMPORAL=1.
+#define LOAD_PTR_BOUNDS(pos, ptr)                                              \
+  [[maybe_unused]] void *ptr##_base = nullptr;                                 \
+  [[maybe_unused]] void *ptr##_bound = nullptr;
 
 // NOOP since bounds checking and load checking are both disabled.
-// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 or __SOFTBOUND_SPATIAL_TEMPORAL=1.
-// Define __SOFTBOUNDCETS_CHECK_LOADS to enable load checking.
+// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 or
+// __SOFTBOUND_SPATIAL_TEMPORAL=1. Define __SOFTBOUNDCETS_CHECK_LOADS to enable
+// load checking.
 #define CHECK_PTR_BOUNDS_LOAD_ONLY(ptr, size)
 
 // NOOP since bounds checking and load checking are both disabled.
-// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 or __SOFTBOUND_SPATIAL_TEMPORAL=1.
-// Define __SOFTBOUNDCETS_CHECK_LOADS to enable load checking.
+// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 or
+// __SOFTBOUND_SPATIAL_TEMPORAL=1. Define __SOFTBOUNDCETS_CHECK_LOADS to enable
+// load checking.
 #define CHECK_STRING_BOUNDS_LOAD_ONLY(ptr)
 
 // NOOP since bounds checking is disabled.
-// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 or __SOFTBOUND_SPATIAL_TEMPORAL=1.
+// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 or
+// __SOFTBOUND_SPATIAL_TEMPORAL=1.
 #define CHECK_PTR_BOUNDS_STORE_ONLY(ptr, size)
 
 // NOOP since bounds checking is disabled.
-// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 or __SOFTBOUND_SPATIAL_TEMPORAL=1.
+// To enable bounds checking, define __SOFTBOUND_SPATIAL=1 or
+// __SOFTBOUND_SPATIAL_TEMPORAL=1.
 #define CHECK_STRING_BOUNDS_STORE_ONLY(ptr)
 
 #endif // __SOFTBOUNDCETS_SPATIAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
 // Introduce base and bounds for the given argument and check for a read access.
 // This combines the LOAD_PTR_BOUNDS and CHECK_PTR_BOUNDS_LOAD_ONLY.
-#define CHECK_PTR_BOUNDS_LOAD(pos, ptr, size) \
-  LOAD_PTR_BOUNDS(pos, ptr);	                \
+#define CHECK_PTR_BOUNDS_LOAD(pos, ptr, size)                                  \
+  LOAD_PTR_BOUNDS(pos, ptr);                                                   \
   CHECK_PTR_BOUNDS_LOAD_ONLY(ptr, size);
 
 // Introduce base and bound for the given argument.
 // If the pointer is not null, also check if it can be dereferenced.
 // This combines the LOAD_PTR_BOUNDS and CHECK_PTR_BOUNDS_LOAD_ONLY.
-#define CHECK_PTR_BOUNDS_LOAD_NULLABLE(pos, ptr, size) \
-  LOAD_PTR_BOUNDS(pos, ptr);                           \
-  if (ptr != nullptr) {                                \
-    CHECK_PTR_BOUNDS_LOAD_ONLY(ptr, size);             \
+#define CHECK_PTR_BOUNDS_LOAD_NULLABLE(pos, ptr, size)                         \
+  LOAD_PTR_BOUNDS(pos, ptr);                                                   \
+  if (ptr != nullptr) {                                                        \
+    CHECK_PTR_BOUNDS_LOAD_ONLY(ptr, size);                                     \
   }
 
-// Introduce base and bound for the given string argument and check if it can be safely passed to
-// a string function.
-// This combines the LOAD_PTR_BOUNDS and CHECK_STRING_BOUNDS_LOAD_ONLY.
-#define CHECK_STRING_BOUNDS_LOAD(pos, ptr)  \
-  LOAD_PTR_BOUNDS(pos, ptr);                \
+// Introduce base and bound for the given string argument and check if it can be
+// safely passed to a string function. This combines the LOAD_PTR_BOUNDS and
+// CHECK_STRING_BOUNDS_LOAD_ONLY.
+#define CHECK_STRING_BOUNDS_LOAD(pos, ptr)                                     \
+  LOAD_PTR_BOUNDS(pos, ptr);                                                   \
   CHECK_STRING_BOUNDS_LOAD_ONLY(ptr);
 
-// Introduce base and bound for the given string argument and check if it can be safely passed to
-// a string function, if it is not null.
-// This combines the LOAD_PTR_BOUNDS and CHECK_STRING_BOUNDS_LOAD_ONLY.
-#define CHECK_STRING_BOUNDS_LOAD_NULLABLE(pos, ptr) \
-  LOAD_PTR_BOUNDS(pos, ptr);                        \
-  if (ptr != nullptr) {                             \
-    CHECK_STRING_BOUNDS_LOAD_ONLY(ptr);             \
+// Introduce base and bound for the given string argument and check if it can be
+// safely passed to a string function, if it is not null. This combines the
+// LOAD_PTR_BOUNDS and CHECK_STRING_BOUNDS_LOAD_ONLY.
+#define CHECK_STRING_BOUNDS_LOAD_NULLABLE(pos, ptr)                            \
+  LOAD_PTR_BOUNDS(pos, ptr);                                                   \
+  if (ptr != nullptr) {                                                        \
+    CHECK_STRING_BOUNDS_LOAD_ONLY(ptr);                                        \
   }
 
-// Introduce the base and bound for a given argument and check if it can be dereferenced.
-// This combines the LOAD_PTR_BOUNDS and CHECK_PTR_BOUNDS_STORE_ONLY macros.
-#define CHECK_PTR_BOUNDS_STORE(pos, ptr, size) \
-  LOAD_PTR_BOUNDS(pos, ptr);                   \
+// Introduce the base and bound for a given argument and check if it can be
+// dereferenced. This combines the LOAD_PTR_BOUNDS and
+// CHECK_PTR_BOUNDS_STORE_ONLY macros.
+#define CHECK_PTR_BOUNDS_STORE(pos, ptr, size)                                 \
+  LOAD_PTR_BOUNDS(pos, ptr);                                                   \
   CHECK_PTR_BOUNDS_STORE_ONLY(ptr, size);
 
 // Introduce the base and bound for a given argument.
 // It the argument is not null, also check if it can be dereferenced.
 // This combines the LOAD_PTR_BOUNDS and CHECK_PTR_BOUNDS_STORE_ONLY macros.
-#define CHECK_PTR_BOUNDS_STORE_NULLABLE(pos, ptr, size) \
-  LOAD_PTR_BOUNDS(pos, ptr);                            \
-  if (ptr != nullptr) {                                 \
-    CHECK_PTR_BOUNDS_STORE_ONLY(ptr, size);             \
+#define CHECK_PTR_BOUNDS_STORE_NULLABLE(pos, ptr, size)                        \
+  LOAD_PTR_BOUNDS(pos, ptr);                                                   \
+  if (ptr != nullptr) {                                                        \
+    CHECK_PTR_BOUNDS_STORE_ONLY(ptr, size);                                    \
   }
 
-// Introduce the base and bound for a given argument and check if it can be dereferenced.
-// This combines the LOAD_PTR_BOUNDS and CHECK_PTR_BOUNDS_STORE_ONLY macros.
-#define CHECK_STRING_BOUNDS_STORE(pos, ptr) \
-  LOAD_PTR_BOUNDS(pos, ptr);                \
+// Introduce the base and bound for a given argument and check if it can be
+// dereferenced. This combines the LOAD_PTR_BOUNDS and
+// CHECK_PTR_BOUNDS_STORE_ONLY macros.
+#define CHECK_STRING_BOUNDS_STORE(pos, ptr)                                    \
+  LOAD_PTR_BOUNDS(pos, ptr);                                                   \
   CHECK_STRING_BOUNDS_STORE_ONLY(ptr);
 
 // Introduce the base and bound for a given argument.
 // It the argument is not null, also check if it can be dereferenced.
 // This combines the LOAD_PTR_BOUNDS and CHECK_PTR_BOUNDS_STORE_ONLY macros.
-#define CHECK_STRING_BOUNDS_STORE_NULLABLE(pos, ptr, size)  \
-  LOAD_PTR_BOUNDS(pos, ptr);                                \
-  if (ptr != nullptr) {                                     \
-    CHECK_STRING_BOUNDS_STORE_ONLY(ptr, size);              \
+#define CHECK_STRING_BOUNDS_STORE_NULLABLE(pos, ptr, size)                     \
+  LOAD_PTR_BOUNDS(pos, ptr);                                                   \
+  if (ptr != nullptr) {                                                        \
+    CHECK_STRING_BOUNDS_STORE_ONLY(ptr, size);                                 \
   }
 
 #if __SOFTBOUNDCETS_TEMPORAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
-// Loads the lock and key for the given parameter from the shadow stack into <ptr>_lock and
-// <ptr>_key.
-#define LOAD_PTR_LOCK(pos, ptr)                                                              \
-  [[ maybe_unused ]] sbcets_lock_t ptr##_lock = __softboundcets_load_lock_shadow_stack(pos); \
-  [[ maybe_unused ]] sbcets_key_t ptr##_key = __softboundcets_load_key_shadow_stack(pos);
+// Loads the lock and key for the given parameter from the shadow stack into
+// <ptr>_lock and <ptr>_key.
+#define LOAD_PTR_LOCK(pos, ptr)                                                \
+  [[maybe_unused]] sbcets_lock_t ptr##_lock =                                  \
+      __softboundcets_load_lock_shadow_stack(pos);                             \
+  [[maybe_unused]] sbcets_key_t ptr##_key =                                    \
+      __softboundcets_load_key_shadow_stack(pos);
 
 #if __SOFTBOUNDCETS_CHECK_LOADS
 
 // Check if a pointer is still alive when it is dereferenced.
 // The lock and key for the pointer must be defined (see LOAD_PTR_LOCK).
-#define CHECK_PTR_ALIVE_LOAD_ONLY(ptr)                                    \
+#define CHECK_PTR_ALIVE_LOAD_ONLY(ptr)                                         \
   __softboundcets_temporal_load_dereference_check(ptr##_lock, ptr##_key);
 
 #else // __SOFTBOUNDCETS_CHECK_LOADS
@@ -371,112 +387,123 @@ __RT_VISIBILITY void __softboundcets_store_return_metadata(void *base,
 // Check if a pointer is still alive when dereferenced for writing.
 // This macro requires that the lock and key values for the pointer are in scope
 // (see LOAD_PTR_LOCK).
-#define CHECK_PTR_ALIVE_STORE_ONLY(ptr)                                   \
+#define CHECK_PTR_ALIVE_STORE_ONLY(ptr)                                        \
   __softboundcets_temporal_store_dereference_check(ptr##_lock, ptr##_key);
 
 #else // __SOFTBOUNDCETS_TEMPORAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
-// Define dummy values for the pointers lock and key as temporal checking is disabled.
-// To enable, define __SOFTBOUNDCETS_TEMPORAL=1 or __SOFTBOUNDCETS_SPATIAL_TEMPORAL=1
-#define LOAD_PTR_LOCK(pos, ptr)                          \
-  [[ maybe_unused ]] sbcets_lock_t ptr##_lock = nullptr; \
-  [[ maybe_unused ]] sbcets_key_t ptr##_key = 0;
+// Define dummy values for the pointers lock and key as temporal checking is
+// disabled. To enable, define __SOFTBOUNDCETS_TEMPORAL=1 or
+// __SOFTBOUNDCETS_SPATIAL_TEMPORAL=1
+#define LOAD_PTR_LOCK(pos, ptr)                                                \
+  [[maybe_unused]] sbcets_lock_t ptr##_lock = nullptr;                         \
+  [[maybe_unused]] sbcets_key_t ptr##_key = 0;
 
 // NOOP as temporal checking is disabled.
-// To enable, define __SOFTBOUNDCETS_CHECK_LOADS=1 and __SOFTBOUNDCETS_TEMPORAL=1 or
+// To enable, define __SOFTBOUNDCETS_CHECK_LOADS=1 and
+// __SOFTBOUNDCETS_TEMPORAL=1 or
 // __SOFTBOUNDCETS_SPATIAL_TEMPORAL=1
 #define CHECK_PTR_ALIVE_LOAD_ONLY(ptr)
 
 // NOOP as temporal checking is disabled.
-// To enable, define __SOFTBOUNDCETS_TEMPORAL=1 or __SOFTBOUNDCETS_SPATIAL_TEMPORAL=1
+// To enable, define __SOFTBOUNDCETS_TEMPORAL=1 or
+// __SOFTBOUNDCETS_SPATIAL_TEMPORAL=1
 #define CHECK_PTR_ALIVE_STORE_ONLY(ptr)
 
 #endif // __SOFTBOUNDCETS_TEMPORAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
 // Introduce the lock and key for an argument and check that it is alive.
 // This macro combines the LOAD_PTR_LOCK and CHECK_PTR_ACTIVE_LOAD_ONLY macros.
-#define CHECK_PTR_ALIVE_LOAD(pos, ptr)  \
-  LOAD_PTR_LOCK(pos, ptr);              \
+#define CHECK_PTR_ALIVE_LOAD(pos, ptr)                                         \
+  LOAD_PTR_LOCK(pos, ptr);                                                     \
   CHECK_PTR_ALIVE_LOAD_ONLY(ptr);
 
-// Introduce the lock and key for an argument and check that it is alive if it is not null.
-// This macro combines the LOAD_PTR_LOCK and CHECK_PTR_ACTIVE_LOAD_ONLY macros.
-#define CHECK_PTR_ALIVE_LOAD_NULLABLE(pos, ptr) \
-  LOAD_PTR_LOCK(pos, ptr);                      \
-  if (ptr != nullptr) {                         \
-    CHECK_PTR_ALIVE_LOAD_ONLY(ptr);             \
+// Introduce the lock and key for an argument and check that it is alive if it
+// is not null. This macro combines the LOAD_PTR_LOCK and
+// CHECK_PTR_ACTIVE_LOAD_ONLY macros.
+#define CHECK_PTR_ALIVE_LOAD_NULLABLE(pos, ptr)                                \
+  LOAD_PTR_LOCK(pos, ptr);                                                     \
+  if (ptr != nullptr) {                                                        \
+    CHECK_PTR_ALIVE_LOAD_ONLY(ptr);                                            \
   }
 
 // Introduce the lock and key for an argument and check that it is alive.
 // This macro combines the LOAD_PTR_LOCK and CHECK_PTR_ACTIVE_STORe_ONLY macros.
-#define CHECK_PTR_ALIVE_STORE(pos, ptr) \
-  LOAD_PTR_LOCK(pos, ptr);              \
+#define CHECK_PTR_ALIVE_STORE(pos, ptr)                                        \
+  LOAD_PTR_LOCK(pos, ptr);                                                     \
   CHECK_PTR_ALIVE_STORE_ONLY(ptr);
 
-// Introduce the lock and key for an argument and check that it is alive if it is not null.
-// This macro combines the LOAD_PTR_LOCK and CHECK_PTR_ACTIVE_STORE_ONLY macros.
-#define CHECK_PTR_ALIVE_STORE_NULLABLE(pos, ptr) \
-  LOAD_PTR_LOCK(pos, ptr);                      \
-  if (ptr != nullptr) {                         \
-    CHECK_PTR_ALIVE_STORE_ONLY(ptr);             \
+// Introduce the lock and key for an argument and check that it is alive if it
+// is not null. This macro combines the LOAD_PTR_LOCK and
+// CHECK_PTR_ACTIVE_STORE_ONLY macros.
+#define CHECK_PTR_ALIVE_STORE_NULLABLE(pos, ptr)                               \
+  LOAD_PTR_LOCK(pos, ptr);                                                     \
+  if (ptr != nullptr) {                                                        \
+    CHECK_PTR_ALIVE_STORE_ONLY(ptr);                                           \
   }
 
 // Check that a pointer read is both alive and in bounds.
-// It will also introduce variables for its base, bound, key and lock in the local scope.
-// This combines the CHECK_PTR_BOUNDS_LOAD and CHECK_PTR_ALIVE_LOAD macros.
-#define CHECK_PTR_LOAD(pos, ptr, size)    \
-  CHECK_PTR_BOUNDS_LOAD(pos, ptr, size);  \
+// It will also introduce variables for its base, bound, key and lock in the
+// local scope. This combines the CHECK_PTR_BOUNDS_LOAD and CHECK_PTR_ALIVE_LOAD
+// macros.
+#define CHECK_PTR_LOAD(pos, ptr, size)                                         \
+  CHECK_PTR_BOUNDS_LOAD(pos, ptr, size);                                       \
   CHECK_PTR_ALIVE_LOAD(pos, ptr);
 
 // Check that a pointer read is both alive and in bounds if it is not null.
-// It will also introduce variables for its base, bound, key and lock in the local scope.
-// This combines the CHECK_PTR_BOUNDS_LOAD_NULLABLE and CHECK_PTR_ALIVE_LOAD_NULLABLE macros.
-#define CHECK_PTR_LOAD_NULLABLE(pos, ptr, size)    \
-  CHECK_PTR_BOUNDS_LOAD_NULLABLE(pos, ptr, size);  \
+// It will also introduce variables for its base, bound, key and lock in the
+// local scope. This combines the CHECK_PTR_BOUNDS_LOAD_NULLABLE and
+// CHECK_PTR_ALIVE_LOAD_NULLABLE macros.
+#define CHECK_PTR_LOAD_NULLABLE(pos, ptr, size)                                \
+  CHECK_PTR_BOUNDS_LOAD_NULLABLE(pos, ptr, size);                              \
   CHECK_PTR_ALIVE_LOAD_NULLABLE(pos, ptr);
 
 // Check that a pointer write is both alive and in bounds.
-// It will also introduce variables for its base, bound, key and lock in the local scope.
-// This combines the CHECK_PTR_BOUNDS_STORE and CHECK_PTR_ALIVE_STORE macros.
-#define CHECK_PTR_STORE(pos, ptr, size)   \
-  CHECK_PTR_BOUNDS_STORE(pos, ptr, size); \
+// It will also introduce variables for its base, bound, key and lock in the
+// local scope. This combines the CHECK_PTR_BOUNDS_STORE and
+// CHECK_PTR_ALIVE_STORE macros.
+#define CHECK_PTR_STORE(pos, ptr, size)                                        \
+  CHECK_PTR_BOUNDS_STORE(pos, ptr, size);                                      \
   CHECK_PTR_ALIVE_STORE(pos, ptr);
 
 // Check that a pointer read is both alive and in bounds if it is not null.
-// It will also introduce variables for its base, bound, key and lock in the local scope.
-// This combines the CHECK_PTR_BOUNDS_STORE_NULLABLE and CHECK_PTR_ALIVE_STORE_NULLABLE macros.
-#define CHECK_PTR_STORE_NULLABLE(pos, ptr, size)    \
-  CHECK_PTR_BOUNDS_STORE_NULLABLE(pos, ptr, size);  \
+// It will also introduce variables for its base, bound, key and lock in the
+// local scope. This combines the CHECK_PTR_BOUNDS_STORE_NULLABLE and
+// CHECK_PTR_ALIVE_STORE_NULLABLE macros.
+#define CHECK_PTR_STORE_NULLABLE(pos, ptr, size)                               \
+  CHECK_PTR_BOUNDS_STORE_NULLABLE(pos, ptr, size);                             \
   CHECK_PTR_ALIVE_STORE_NULLABLE(pos, ptr);
 
-// Check that passing an argument to a function expecting a null terminated string is safe.
-// It will also introduce variables for its base, bound, key and lock in the local scope.
-// This combines the CHECK_STRING_BOUNDS_LOAD and CHECK_PTR_ALIVE_LOAD macros.
-#define CHECK_STRING_LOAD(pos, ptr)   \
-  CHECK_STRING_BOUNDS_LOAD(pos, ptr); \
+// Check that passing an argument to a function expecting a null terminated
+// string is safe. It will also introduce variables for its base, bound, key and
+// lock in the local scope. This combines the CHECK_STRING_BOUNDS_LOAD and
+// CHECK_PTR_ALIVE_LOAD macros.
+#define CHECK_STRING_LOAD(pos, ptr)                                            \
+  CHECK_STRING_BOUNDS_LOAD(pos, ptr);                                          \
   CHECK_PTR_ALIVE_LOAD(pos, ptr);
 
-// Check that passing an argument to a function expecting a null terminated string is safe, if it
-// is not null.
-// It will still introduce variables for its base, bound, key and lock in the local scope.
-// This combines the CHECK_STRING_BOUNDS_LOAD_NULLABLE and CHECK_PTR_ALIVE_LOAD_NULLABLE macros.
-#define CHECK_STRING_LOAD_NULLABLE(pos, ptr)    \
-  CHECK_STRING_BOUNDS_LOAD_NULLABLE(pos, ptr);  \
+// Check that passing an argument to a function expecting a null terminated
+// string is safe, if it is not null. It will still introduce variables for its
+// base, bound, key and lock in the local scope. This combines the
+// CHECK_STRING_BOUNDS_LOAD_NULLABLE and CHECK_PTR_ALIVE_LOAD_NULLABLE macros.
+#define CHECK_STRING_LOAD_NULLABLE(pos, ptr)                                   \
+  CHECK_STRING_BOUNDS_LOAD_NULLABLE(pos, ptr);                                 \
   CHECK_PTR_ALIVE_LOAD_NULLABLE(pos, ptr);
 
-// Check that passing an argument to a function expecting a null terminated string is safe.
-// It will also introduce variables for its base, bound, key and lock in the local scope.
-// This combines the CHECK_STRING_BOUNDS_STORE and CHECK_PTR_ALIVE_STORE macros.
-#define CHECK_STRING_STORE(pos, ptr)    \
-  CHECK_STRING_BOUNDS_STORE(pos, ptr);  \
+// Check that passing an argument to a function expecting a null terminated
+// string is safe. It will also introduce variables for its base, bound, key and
+// lock in the local scope. This combines the CHECK_STRING_BOUNDS_STORE and
+// CHECK_PTR_ALIVE_STORE macros.
+#define CHECK_STRING_STORE(pos, ptr)                                           \
+  CHECK_STRING_BOUNDS_STORE(pos, ptr);                                         \
   CHECK_PTR_ALIVE_STORE(pos, ptr);
 
-// Check that passing an argument to a function expecting a null terminated string is safe, if it
-// is not null.
-// It will still introduce variables for its base, bound, key and lock in the local scope.
-// This combines the CHECK_STRING_BOUNDS_STORE_NULLABLE and CHECK_PTR_ALIVE_STORE_NULLABLE macros.
-#define CHECK_STRING_STORE_NULLABLE(pos, ptr)    \
-  CHECK_STRING_BOUNDS_STORE_NULLABLE(pos, ptr);  \
+// Check that passing an argument to a function expecting a null terminated
+// string is safe, if it is not null. It will still introduce variables for its
+// base, bound, key and lock in the local scope. This combines the
+// CHECK_STRING_BOUNDS_STORE_NULLABLE and CHECK_PTR_ALIVE_STORE_NULLABLE macros.
+#define CHECK_STRING_STORE_NULLABLE(pos, ptr)                                  \
+  CHECK_STRING_BOUNDS_STORE_NULLABLE(pos, ptr);                                \
   CHECK_PTR_ALIVE_STORE_NULLABLE(pos, ptr);
 
 /* wrappers for library calls (incomplete) */
@@ -1328,10 +1355,11 @@ __RT_VISIBILITY char *softboundcets_strcat(char *dest, char *src) {
   CHECK_STRING_LOAD(2, src);
 
   // + 1 for the null terminator
-  // Note: strlen(src) may overrun if we don't define __SOFTBOUNDCETS_CHECK_LOADS
+  // Note: strlen(src) may overrun if we don't define
+  // __SOFTBOUNDCETS_CHECK_LOADS
   if (dest + strlen(dest) + strlen(src) + 1 > dest_bound) {
     printf("overflow with strcat, dest = %p, strlen(dest)=%d, "
-            "strlen(src)=%d, dest_bound=%p \n",
+           "strlen(src)=%d, dest_bound=%p \n",
            dest, strlen(dest), strlen(src), dest_bound);
     __softboundcets_abort();
   }
@@ -1341,8 +1369,7 @@ __RT_VISIBILITY char *softboundcets_strcat(char *dest, char *src) {
   return ret_ptr;
 }
 
-__RT_VISIBILITY char *softboundcets_strncat(char *dest, char *src,
-                                            size_t n) {
+__RT_VISIBILITY char *softboundcets_strncat(char *dest, char *src, size_t n) {
   CHECK_STRING_STORE(1, dest);
 
   size_t src_len = strlen(src);
@@ -1350,17 +1377,16 @@ __RT_VISIBILITY char *softboundcets_strncat(char *dest, char *src,
 
   CHECK_PTR_LOAD(2, src, min_n_src_len);
 
-
   if (dest + strlen(dest) + min_n_src_len + 1 > dest_bound) {
     printf("overflow with strncat, dest = %p, strlen(dest)=%d, "
-            "n=%d, dest_bound=%p \n",
+           "n=%d, dest_bound=%p \n",
            dest, strlen(dest), n, dest_bound);
     __softboundcets_abort();
   }
 
   char *ret_ptr = strncat(dest, src, n);
   __softboundcets_propagate_metadata_shadow_stack_from(1, 0);
-  
+
   return ret_ptr;
 }
 
@@ -1833,8 +1859,10 @@ static void exchange_elements_helper(void *base, size_t element_size, int idx1,
     char *addr_idx2 = &base_bytes[idx2 * element_size + i];
 
     //    printf("addr_idx1= %p, addr_idx2=%p\n", addr_idx1, addr_idx2);
-    __softboundcets_metadata_t *metadata1 = __softboundcets_shadowspace_metadata_ptr(addr_idx1);
-    __softboundcets_metadata_t *metadata2 = __softboundcets_shadowspace_metadata_ptr(addr_idx2);
+    __softboundcets_metadata_t *metadata1 =
+        __softboundcets_shadowspace_metadata_ptr(addr_idx1);
+    __softboundcets_metadata_t *metadata2 =
+        __softboundcets_shadowspace_metadata_ptr(addr_idx2);
 
 #if __SOFTBOUNDCETS_SPATIAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
 
@@ -1850,13 +1878,12 @@ static void exchange_elements_helper(void *base, size_t element_size, int idx1,
     key_idx1 = metadata1->key;
     lock_idx2 = metadata2->lock;
     key_idx2 = metadata2->key;
-    
+
 #endif
     __softboundcets_metadata_store(addr_idx1, base_idx2, bound_idx2, key_idx2,
                                    lock_idx2);
     __softboundcets_metadata_store(addr_idx2, base_idx1, bound_idx1, key_idx1,
                                    lock_idx1);
-
   }
 }
 
@@ -1942,16 +1969,17 @@ int softboundcets_wprintf(wchar_t *fmt, ...) {
   LOAD_PTR_BOUNDS(0, fmt);
 
 #if __SOFTBOUNDCETS_CHECK_LOADS
-  if (!wmemchr(fmt, L'\0', (char*)fmt_bound - (char*)fmt)) {
-    __softboundcets_error_printf("In wstring load dereference check: base=%zx, bound=%zx, ptr=%zx",
-      fmt_base, fmt_bound, fmt);
+  if (!wmemchr(fmt, L'\0', (char *)fmt_bound - (char *)fmt)) {
+    __softboundcets_error_printf(
+        "In wstring load dereference check: base=%zx, bound=%zx, ptr=%zx",
+        fmt_base, fmt_bound, fmt);
     __softboundcets_abort();
   }
 #endif
-  
+
   va_list va;
   va_start(va, fmt);
-  int result= vwprintf(fmt, va);
+  int result = vwprintf(fmt, va);
   va_end(va);
 
   return result;
@@ -1994,12 +2022,15 @@ char *softboundcets_basename(char *filename) {
   char *result = basename(filename);
 
   if (filename != nullptr) {
-    // The return value is part of the (modified) filename parameter => copy the metadata over.
-    // We need to check this since the null pointer may not have all the metadata we want.
+    // The return value is part of the (modified) filename parameter => copy the
+    // metadata over. We need to check this since the null pointer may not have
+    // all the metadata we want.
     __softboundcets_propagate_metadata_shadow_stack_from(1, 0);
   } else {
-    // strlen here is safe as the static result strings are always null terminated
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
+    // strlen here is safe as the static result strings are always null
+    // terminated
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   }
 
   return result;
@@ -2012,7 +2043,8 @@ void softboundcets_explicit_bzero(void *buf, size_t n) {
   explicit_bzero(buf, n);
 }
 
-// NOTE: We are treating this function as a string copy function, so we are not copying metadata
+// NOTE: We are treating this function as a string copy function, so we are not
+// copying metadata
 __RT_VISIBILITY
 void *softboundcets_memccpy(void *dest, void *src, int c, size_t n) {
   CHECK_PTR_STORE(1, dest, n);
@@ -2037,7 +2069,8 @@ void *softboundcets_memfrob(void *buf, size_t n) {
 }
 
 __RT_VISIBILITY
-void *softboundcets_memmem(void *haystack, size_t haystack_len, void *needle, size_t needle_len) {
+void *softboundcets_memmem(void *haystack, size_t haystack_len, void *needle,
+                           size_t needle_len) {
   CHECK_PTR_LOAD(1, haystack, haystack_len);
   CHECK_PTR_LOAD(2, needle, needle_len);
 
@@ -2070,17 +2103,19 @@ void *softboundcets_memset(void *buf, int c, size_t n) {
 
 __RT_VISIBILITY
 void *softboundcets_rawmemchr(void *buf, int c) {
-  // Note that the point of this function is that it is memchr without the bounds check.
-  // This wrapper essentially makes the function useless, so we just use regular memchr.
+  // Note that the point of this function is that it is memchr without the
+  // bounds check. This wrapper essentially makes the function useless, so we
+  // just use regular memchr.
   LOAD_PTR_BOUNDS(1, buf);
   CHECK_PTR_ALIVE_LOAD(1, buf);
 
-  void *result = memchr(buf, c, (char*)buf_bound - (char*)buf);
+  void *result = memchr(buf, c, (char *)buf_bound - (char *)buf);
   if (result != nullptr) {
     __softboundcets_propagate_metadata_shadow_stack_from(1, 0);
   } else {
-    __softboundcets_error_printf("Out of bounds read in rawmemchr, base=%zx, bound=%zx, ptr=%zx, c=%u",
-      buf_base, buf_bound, buf, c);
+    __softboundcets_error_printf(
+        "Out of bounds read in rawmemchr, base=%zx, bound=%zx, ptr=%zx, c=%u",
+        buf_base, buf_bound, buf, c);
     __softboundcets_abort();
   }
   return result;
@@ -2093,8 +2128,8 @@ __RT_VISIBILITY
 char *softboundcets_sigabbrev_np(int sig) {
   char *result = sigabbrev_np(sig);
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
-  } else {
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+1, __softboundcets_global_lock); } else {
     __softboundcets_store_null_return_metadata();
   }
   return result;
@@ -2104,8 +2139,8 @@ __RT_VISIBILITY
 char *softboundcets_sigdescr_np(int sig) {
   char *result = sigdescr_np(sig);
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
-  } else {
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+1, __softboundcets_global_lock); } else {
     __softboundcets_store_null_return_metadata();
   }
   return result;
@@ -2153,7 +2188,8 @@ __RT_VISIBILITY
 char *softboundcets_strerror_l(int errnum, locale_t locale) {
   char *result = strerror_l(errnum, locale);
   // This is save as strerror_l returns a valid string
-  __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
+  __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
+                                        __softboundcets_global_lock);
   return result;
 }
 
@@ -2162,8 +2198,8 @@ __RT_VISIBILITY
 char *softboundcets_strerrordesc_np(int errnum) {
   char *result = strerrordesc_np(errnum);
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
-  } else {
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+1, __softboundcets_global_lock); } else {
     __softboundcets_store_null_return_metadata();
   }
   return result;
@@ -2173,8 +2209,8 @@ __RT_VISIBILITY
 char *softboundcets_strerrorname_np(int errnum) {
   char *result = strerrorname_np(errnum);
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
-  } else {
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+1, __softboundcets_global_lock); } else {
     __softboundcets_store_null_return_metadata();
   }
   return result;
@@ -2206,24 +2242,27 @@ size_t softboundcets_strnlen(char *str, size_t n) {
 
 __RT_VISIBILITY
 char *softboundcets_strsep(char **segment, char *delim) {
-  CHECK_PTR_STORE(1, segment, sizeof(char*));
+  CHECK_PTR_STORE(1, segment, sizeof(char *));
   CHECK_STRING_LOAD(2, delim);
 
-  if(*segment != nullptr) {
+  if (*segment != nullptr) {
     // Also check if the string pointed to by segment is valid
     sbcets_base_t str_base = __softboundcets_metadata_load_base(*segment);
     sbcets_bound_t str_bound = __softboundcets_metadata_load_bound(*segment);
     sbcets_key_t str_key = __softboundcets_metadata_load_key(*segment);
     sbcets_lock_t str_lock = __softboundcets_metadata_load_lock(*segment);
     __softboundcets_temporal_store_dereference_check(str_lock, str_key);
-    // We need *segment to be a valid string -> It must contain a null terminator
-    if (!memchr(*segment, '\n', (char*)str_bound - *segment)) {
-      __softboundcets_error_printf("In string store dereference check: base=%zx, bound=%zx, ptr=%zx",
-        str_base, str_bound, *segment);
+    // We need *segment to be a valid string -> It must contain a null
+    // terminator
+    if (!memchr(*segment, '\n', (char *)str_bound - *segment)) {
+      __softboundcets_error_printf(
+          "In string store dereference check: base=%zx, bound=%zx, ptr=%zx",
+          str_base, str_bound, *segment);
       __softboundcets_abort();
     }
 
-    __softboundcets_store_return_metadata(str_base, str_bound, str_key, str_lock);
+    __softboundcets_store_return_metadata(str_base, str_bound, str_key,
+                                          str_lock);
     return strsep(segment, delim);
   } else {
     __softboundcets_store_null_return_metadata();
@@ -2234,21 +2273,23 @@ char *softboundcets_strsep(char **segment, char *delim) {
 __RT_VISIBILITY
 char *softboundcets_strsignal(int sig) {
   char *result = strsignal(sig);
-  __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
+  __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
+                                        __softboundcets_global_lock);
   return result;
 }
 
 __RT_VISIBILITY
 char *softboundcets_strtok_r(char *s, char *delim, char **save_ptr) {
   // This function has two "modes"
-  // If s is not null, it reads from s and modifies *save_ptr with the return pointing into s
-  // else it reads from and modifies *save_ptr with the retur pointing there as well
-  // Note that this behaviour may change with future releases of glibc
+  // If s is not null, it reads from s and modifies *save_ptr with the return
+  // pointing into s else it reads from and modifies *save_ptr with the retur
+  // pointing there as well Note that this behaviour may change with future
+  // releases of glibc
   CHECK_STRING_LOAD_NULLABLE(1, s);
   CHECK_STRING_LOAD(2, delim);
-  CHECK_PTR_LOAD(3, save_ptr, sizeof(char*));
+  CHECK_PTR_LOAD(3, save_ptr, sizeof(char *));
 
-  if(s != nullptr) {
+  if (s != nullptr) {
     // We already checked all pointers
     char *result = strtok_r(s, delim, save_ptr);
 
@@ -2262,22 +2303,28 @@ char *softboundcets_strtok_r(char *s, char *delim, char **save_ptr) {
     return result;
   } else {
     // We need to check the metadata of *save_ptr manually
-    sbcets_base_t saved_ptr_base = __softboundcets_metadata_load_base(*save_ptr);
-    sbcets_bound_t saved_ptr_bound = __softboundcets_metadata_load_bound(*save_ptr);
-    sbcets_lock_t saved_ptr_lock = __softboundcets_metadata_load_lock(*save_ptr);
+    sbcets_base_t saved_ptr_base =
+        __softboundcets_metadata_load_base(*save_ptr);
+    sbcets_bound_t saved_ptr_bound =
+        __softboundcets_metadata_load_bound(*save_ptr);
+    sbcets_lock_t saved_ptr_lock =
+        __softboundcets_metadata_load_lock(*save_ptr);
     sbcets_key_t saved_ptr_key = __softboundcets_metadata_load_key(*save_ptr);
 
-    __softboundcets_temporal_store_dereference_check(saved_ptr_lock, saved_ptr_key);
-    if (!memchr(*save_ptr, '\n', (char*)saved_ptr_bound - *save_ptr)) {
-      __softboundcets_error_printf("In string store dereference check: base=%zx, bound=%zx, ptr=%zx",
-        saved_ptr_base, saved_ptr_bound, *save_ptr);
+    __softboundcets_temporal_store_dereference_check(saved_ptr_lock,
+                                                     saved_ptr_key);
+    if (!memchr(*save_ptr, '\n', (char *)saved_ptr_bound - *save_ptr)) {
+      __softboundcets_error_printf(
+          "In string store dereference check: base=%zx, bound=%zx, ptr=%zx",
+          saved_ptr_base, saved_ptr_bound, *save_ptr);
       __softboundcets_abort();
     }
 
     char *result = strtok_r(s, delim, save_ptr);
     if (result) {
       // The returned pointer is in *save_ptr's bounds
-      __softboundcets_store_return_metadata(saved_ptr_base, saved_ptr_bound, saved_ptr_key, saved_ptr_lock);
+      __softboundcets_store_return_metadata(saved_ptr_base, saved_ptr_bound,
+                                            saved_ptr_key, saved_ptr_lock);
     } else {
       __softboundcets_store_null_return_metadata();
     }
@@ -2300,7 +2347,8 @@ size_t softboundcets_strxfrm(char *dest, char *src, size_t n) {
 }
 
 __RT_VISIBILITY
-size_t softboundcets_strxfrm_l(char *dest, const char *src, size_t n, locale_t locale) {
+size_t softboundcets_strxfrm_l(char *dest, const char *src, size_t n,
+                               locale_t locale) {
   CHECK_PTR_STORE(0, dest, n);
   CHECK_PTR_LOAD(1, src, n);
   return strxfrm_l(dest, src, n, locale);
@@ -2359,10 +2407,11 @@ int softboundcets_strncasecmp_l(char *s1, char *s2, size_t n, locale_t l) {
 
 __RT_VISIBILITY
 int softboundcets___asprintf(char **ptr, char *fmt, ...) {
-  CHECK_PTR_STORE(0, ptr, sizeof(char*));
+  CHECK_PTR_STORE(0, ptr, sizeof(char *));
   CHECK_STRING_LOAD(1, fmt);
   // Cannot use varargs directly, so use vasprintf
-  // Since __asprintf and asprintf point to the same implementation, this should be fine
+  // Since __asprintf and asprintf point to the same implementation, this should
+  // be fine
   va_list varargs;
   va_start(varargs, fmt);
   int result = vasprintf(ptr, fmt, varargs);
@@ -2372,7 +2421,8 @@ int softboundcets___asprintf(char **ptr, char *fmt, ...) {
     sbcets_key_t key = 0;
     sbcets_lock_t lock = nullptr;
     __softboundcets_memory_allocation(*ptr, &lock, &key);
-    // We have sucessfully allocated, result contains the size of the buffer - 1 for \0
+    // We have sucessfully allocated, result contains the size of the buffer - 1
+    // for \0
     __softboundcets_metadata_store(*ptr, *ptr, *ptr + result + 1, key, lock);
   }
 
@@ -2381,8 +2431,8 @@ int softboundcets___asprintf(char **ptr, char *fmt, ...) {
 
 __RT_VISIBILITY
 int softboundcets___overflow(FILE *file, int i) {
-  // Note: While we should probably never dereference FILE* directly, some libc macros may, so set
-  // the bounds accordingly.
+  // Note: While we should probably never dereference FILE* directly, some libc
+  // macros may, so set the bounds accordingly.
   CHECK_PTR_LOAD(0, file, sizeof(FILE));
   return __overflow(file, i);
 }
@@ -2395,9 +2445,9 @@ int softboundcets___uflow(FILE *file) {
 
 __RT_VISIBILITY
 int softboundcets_asprintf(char **ptr, char *fmt, ...) {
-  CHECK_PTR_STORE(0, ptr, sizeof(char*));
+  CHECK_PTR_STORE(0, ptr, sizeof(char *));
   CHECK_STRING_LOAD(1, fmt);
-  
+
   va_list varargs;
   va_start(varargs, fmt);
   int result = vasprintf(ptr, fmt, varargs);
@@ -2407,7 +2457,8 @@ int softboundcets_asprintf(char **ptr, char *fmt, ...) {
     sbcets_key_t key = 0;
     sbcets_lock_t lock = nullptr;
     __softboundcets_memory_allocation(*ptr, &lock, &key);
-    // We have sucessfully allocated, result contains the size of the buffer - 1 for \0
+    // We have sucessfully allocated, result contains the size of the buffer - 1
+    // for \0
     __softboundcets_metadata_store(*ptr, *ptr, *ptr + result + 1, key, lock);
   }
 
@@ -2432,11 +2483,12 @@ char *softboundcets_ctermid(char *s) {
   CHECK_PTR_LOAD_NULLABLE(1, s, L_ctermid);
 
   char *result = ctermid(s);
-  
+
   if (s != nullptr) {
     __softboundcets_propagate_metadata_shadow_stack_from(1, 0);
   } else {
-    __softboundcets_store_return_metadata(result, result + L_ctermid, 1, __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + L_ctermid, 1,
+                                          __softboundcets_global_lock);
   }
   return result;
 }
@@ -2450,7 +2502,8 @@ char *softboundcets_cuserid(char *s) {
   if (s != nullptr) {
     __softboundcets_propagate_metadata_shadow_stack_from(1, 0);
   } else {
-    __softboundcets_store_return_metadata(result, result + L_cuserid, 1, __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + L_cuserid, 1,
+                                          __softboundcets_global_lock);
   }
   return result;
 }
@@ -2540,7 +2593,8 @@ FILE *softboundcets_fmemopen(void *buf, size_t n, char *mode) {
     sbcets_lock_t lock;
     sbcets_key_t key;
     __softboundcets_memory_allocation(result, &lock, &key);
-    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key, lock);
+    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key,
+                                          lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -2557,28 +2611,32 @@ FILE *softboundcets_fopen64(char *filename, char *mode) {
     sbcets_lock_t lock;
     sbcets_key_t key;
     __softboundcets_memory_allocation(result, &lock, &key);
-    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key, lock);
+    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key,
+                                          lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
   return result;
 }
 
-// TODO: The inner pointers of cookie_io_functions_t are probably not checked, so add macros for
-// situations like this as well?
+// TODO: The inner pointers of cookie_io_functions_t are probably not checked,
+// so add macros for situations like this as well?
 __RT_VISIBILITY
-FILE *softboundcets_fopencookie(void *magic_cookie, char *modes, cookie_io_functions_t io_functions) {
-  // TODO: What to do with dynamically sized data types? I suppose they are checked in the callback
-  // functions that this value is eventually passed to since the io_functions are user-defined.
+FILE *softboundcets_fopencookie(void *magic_cookie, char *modes,
+                                cookie_io_functions_t io_functions) {
+  // TODO: What to do with dynamically sized data types? I suppose they are
+  // checked in the callback functions that this value is eventually passed to
+  // since the io_functions are user-defined.
   CHECK_PTR_LOAD(1, magic_cookie, 0);
   CHECK_STRING_LOAD(2, modes);
-  
+
   FILE *result = fopencookie(magic_cookie, modes, io_functions);
   if (result) {
     sbcets_lock_t lock;
     sbcets_key_t key;
     __softboundcets_memory_allocation(result, &lock, &key);
-    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key, lock);
+    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key,
+                                          lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -2620,17 +2678,18 @@ FILE *softboundcets_freopen(char *filename, char *mode, FILE *file) {
   // TODO: The freopen function accepts null, but returns an error if it does.
   // Is that something we want to avoid?
   CHECK_PTR_LOAD_NULLABLE(3, file, sizeof(FILE));
-  
+
   // TODO: I'm somewhat confused as to how this function works.
-  // It seems like the old file is always closed in the glibc implementation, but the man page
-  // seems to disagree
-  // Just treat this as a deallocation and new allocation for now, if the function succeeds
+  // It seems like the old file is always closed in the glibc implementation,
+  // but the man page seems to disagree Just treat this as a deallocation and
+  // new allocation for now, if the function succeeds
   FILE *result = freopen(filename, mode, file);
   if (result) {
     sbcets_lock_t lock;
     sbcets_key_t key;
     __softboundcets_memory_allocation(result, &lock, &key);
-    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key, lock);
+    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key,
+                                          lock);
     __softboundcets_memory_deallocation(file_lock, file_key);
   } else {
     __softboundcets_store_null_return_metadata();
@@ -2649,7 +2708,8 @@ FILE *softboundcets_freopen64(char *filename, char *mode, FILE *file) {
     sbcets_lock_t lock;
     sbcets_key_t key;
     __softboundcets_memory_allocation(result, &lock, &key);
-    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key, lock);
+    __softboundcets_store_return_metadata(result, result + sizeof(FILE), key,
+                                          lock);
     __softboundcets_memory_deallocation(file_lock, file_key);
   } else {
     __softboundcets_store_null_return_metadata();
@@ -2715,7 +2775,8 @@ void softboundcets_funlockfile(FILE *file) {
 }
 
 __RT_VISIBILITY
-size_t softboundcets_fwrite_unlocked(void *ptr, size_t size, size_t n, FILE *file) {
+size_t softboundcets_fwrite_unlocked(void *ptr, size_t size, size_t n,
+                                     FILE *file) {
   // Note: This could technically overflow
   CHECK_PTR_LOAD(0, ptr, size * n);
   CHECK_PTR_LOAD(1, file, sizeof(FILE));
@@ -2734,22 +2795,24 @@ int softboundcets_getc_unlocked(FILE *file) {
   return getc_unlocked(file);
 }
 
-
 __RT_VISIBILITY
-ssize_t softboundcets_getdelim(char **lineptr, size_t *n, int delim, FILE *file) {
-  CHECK_PTR_STORE(0, lineptr, sizeof(char*));
+ssize_t softboundcets_getdelim(char **lineptr, size_t *n, int delim,
+                               FILE *file) {
+  CHECK_PTR_STORE(0, lineptr, sizeof(char *));
   CHECK_PTR_STORE(1, n, sizeof(size_t));
   CHECK_PTR_LOAD(2, file, sizeof(FILE));
 
-  // Note: *lineptr can be null or malloc'd, but should not be static of from some other allocator
-  // that does not work with metadata.
-  // Since I don't think that softboundcets can express this, this is not checked.
+  // Note: *lineptr can be null or malloc'd, but should not be static of from
+  // some other allocator that does not work with metadata. Since I don't think
+  // that softboundcets can express this, this is not checked.
   if (*lineptr) {
     sbcets_bound_t line_bound = __softboundcets_metadata_load_bound(*lineptr);
-    size_t buffer_size = (char*)line_bound - *lineptr;
+    size_t buffer_size = (char *)line_bound - *lineptr;
     if (buffer_size < *n) {
-      __softboundcets_error_printf("in getdelim, the buffer size is assumed to be too large: "\
-        "actual size: %d, stated size: %d", buffer_size, *n);
+      __softboundcets_error_printf(
+          "in getdelim, the buffer size is assumed to be too large: "
+          "actual size: %d, stated size: %d",
+          buffer_size, *n);
     }
   }
   char *prev_line = *lineptr;
@@ -2757,7 +2820,8 @@ ssize_t softboundcets_getdelim(char **lineptr, size_t *n, int delim, FILE *file)
   ssize_t result = getdelim(lineptr, n, delim, file);
 
   // Check if we (re-)allocated and reset metadata if so
-  // TODO: Is this correct? Is there any other way to detect reallocation at the same location?
+  // TODO: Is this correct? Is there any other way to detect reallocation at the
+  // same location?
   if (prev_line != *lineptr) {
 
     sbcets_lock_t line_lock = __softboundcets_metadata_load_lock(prev_line);
@@ -2767,7 +2831,8 @@ ssize_t softboundcets_getdelim(char **lineptr, size_t *n, int delim, FILE *file)
     sbcets_lock_t new_line_lock = nullptr;
     sbcets_key_t new_line_key = 0;
     __softboundcets_memory_allocation(*lineptr, &new_line_lock, &new_line_key);
-    __softboundcets_metadata_store(*lineptr, *lineptr, *lineptr + *n, new_line_key, new_line_lock);
+    __softboundcets_metadata_store(*lineptr, *lineptr, *lineptr + *n,
+                                   new_line_key, new_line_lock);
   }
 
   return result;
@@ -2775,19 +2840,21 @@ ssize_t softboundcets_getdelim(char **lineptr, size_t *n, int delim, FILE *file)
 
 __RT_VISIBILITY
 ssize_t softboundcets_getline(char **lineptr, size_t *n, FILE *file) {
-  CHECK_PTR_STORE(0, lineptr, sizeof(char*));
+  CHECK_PTR_STORE(0, lineptr, sizeof(char *));
   CHECK_PTR_STORE(1, n, sizeof(size_t));
   CHECK_PTR_LOAD(2, file, sizeof(FILE));
 
-  // Note: *lineptr can be null or malloc'd, but should not be static of from some other allocator
-  // that does not work with metadata.
-  // Since I don't think that softboundcets can express this, this is not checked.
+  // Note: *lineptr can be null or malloc'd, but should not be static of from
+  // some other allocator that does not work with metadata. Since I don't think
+  // that softboundcets can express this, this is not checked.
   if (*lineptr) {
     sbcets_bound_t line_bound = __softboundcets_metadata_load_bound(*lineptr);
-    size_t buffer_size = (char*)line_bound - *lineptr;
+    size_t buffer_size = (char *)line_bound - *lineptr;
     if (buffer_size < *n) {
-      __softboundcets_error_printf("in getdelim, the buffer size is assumed to be too large: "\
-        "actual size: %d, stated size: %d", buffer_size, *n);
+      __softboundcets_error_printf(
+          "in getdelim, the buffer size is assumed to be too large: "
+          "actual size: %d, stated size: %d",
+          buffer_size, *n);
       __softboundcets_abort();
     }
   }
@@ -2805,7 +2872,8 @@ ssize_t softboundcets_getline(char **lineptr, size_t *n, FILE *file) {
     sbcets_lock_t new_line_lock = nullptr;
     sbcets_key_t new_line_key = 0;
     __softboundcets_memory_allocation(*lineptr, &new_line_lock, &new_line_key);
-    __softboundcets_metadata_store(*lineptr, *lineptr, *lineptr + *n, new_line_key, new_line_lock);
+    __softboundcets_metadata_store(*lineptr, *lineptr, *lineptr + *n,
+                                   new_line_key, new_line_lock);
   }
 
   return result;
@@ -2830,7 +2898,8 @@ int softboundcets_obstack_printf(struct obstack *obstack, char *fmt, ...) {
 }
 
 __RT_VISIBILITY
-int softboundcets_obstack_vprintf(struct obstack *obstack, char *fmt, va_list va) {
+int softboundcets_obstack_vprintf(struct obstack *obstack, char *fmt,
+                                  va_list va) {
   CHECK_PTR_LOAD(0, obstack, sizeof(struct obstack));
   CHECK_STRING_LOAD(1, fmt);
 
@@ -2839,17 +2908,19 @@ int softboundcets_obstack_vprintf(struct obstack *obstack, char *fmt, va_list va
 
 __RT_VISIBILITY
 FILE *softboundcets_open_memstream(char **buf, size_t *size) {
-  CHECK_PTR_STORE(1, buf, sizeof(char*));
+  CHECK_PTR_STORE(1, buf, sizeof(char *));
   CHECK_PTR_STORE(2, size, sizeof(size_t));
 
-  // Note: The pointer pointed to by *buf grows dynamically and is this reallocated when writing.
+  // Note: The pointer pointed to by *buf grows dynamically and is this
+  // reallocated when writing.
   FILE *result = open_memstream(buf, size);
 
   if (result) {
     sbcets_lock_t result_lock = nullptr;
     sbcets_key_t result_key = 0;
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
-    __softboundcets_store_return_metadata(result, result + sizeof(FILE), result_key, result_lock);
+    __softboundcets_store_return_metadata(result, result + sizeof(FILE),
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -2859,11 +2930,11 @@ FILE *softboundcets_open_memstream(char **buf, size_t *size) {
     sbcets_lock_t lock = nullptr;
     sbcets_key_t key = 0;
     __softboundcets_memory_allocation(*buf, &lock, &key);
-    // WORKAROUND: Since the pointer can be reallocated by the libc without us knowing, just make
-    // this pointer valid erverywhere.
-    // I don't think this function is used often enough to merit runtime patching the relevant
+    // WORKAROUND: Since the pointer can be reallocated by the libc without us
+    // knowing, just make this pointer valid erverywhere. I don't think this
+    // function is used often enough to merit runtime patching the relevant
     // realloc function.
-    __softboundcets_metadata_store(*buf, 0, (void*)281474976710656, key, lock);
+    __softboundcets_metadata_store(*buf, 0, (void *)281474976710656, key, lock);
   }
 
   return result;
@@ -2883,9 +2954,10 @@ int softboundcets_printf(char *fmt, ...) {
     if (fmt[i] == '%' && fmt[i + 1] != '%' && fmt[i + 1] != '\0') {
       i++;
       // ignore all flags/width/precision/modifiers
-      while(isdigit(fmt[i]) || fmt[i] == '.' || fmt[i] == '#' || fmt[i] == '+' || 
-            fmt[i] == '-' || fmt[i] == ' ' || fmt[i] == 'h' || fmt[i] == 'l' || 
-            fmt[i] == 'j' || fmt[i] == 'z' || fmt[i] == 't' || fmt[i] == 'L')
+      while (isdigit(fmt[i]) || fmt[i] == '.' || fmt[i] == '#' ||
+             fmt[i] == '+' || fmt[i] == '-' || fmt[i] == ' ' || fmt[i] == 'h' ||
+             fmt[i] == 'l' || fmt[i] == 'j' || fmt[i] == 'z' || fmt[i] == 't' ||
+             fmt[i] == 'L')
         i++;
       switch (fmt[i]) {
         // Integer specifiers
@@ -2966,7 +3038,8 @@ int softboundcets_putw(int w, FILE *file) {
 }
 
 __RT_VISIBILITY
-int softboundcets_renameat2(int oldfd, char *oldpath, int newfd, char *newpath, unsigned int flags) {
+int softboundcets_renameat2(int oldfd, char *oldpath, int newfd, char *newpath,
+                            unsigned int flags) {
   CHECK_STRING_LOAD(0, oldpath);
   CHECK_STRING_LOAD(1, newpath);
 
@@ -2989,7 +3062,8 @@ void softboundcets_setbuffer(FILE *file, char *buf, size_t size) {
   CHECK_PTR_LOAD(0, file, sizeof(FILE));
   CHECK_PTR_STORE_NULLABLE(1, buf, size);
 
-  // Note: the buffer needs to be alive as long as it is bound to file, but we cannot express this
+  // Note: the buffer needs to be alive as long as it is bound to file, but we
+  // cannot express this
   setbuffer(file, buf, size);
 }
 
@@ -3004,7 +3078,8 @@ int softboundcets_setvbuf(FILE *file, char *buf, int mode, size_t size) {
   CHECK_PTR_LOAD(0, file, sizeof(FILE));
   CHECK_PTR_STORE_NULLABLE(1, buf, size);
 
-  // Note: the buffer needs to be alive as long as it is bound to file, but we cannot express this
+  // Note: the buffer needs to be alive as long as it is bound to file, but we
+  // cannot express this
   return setvbuf(file, buf, mode, size);
 }
 
@@ -3026,8 +3101,8 @@ int softboundcets_sprintf(char *buf, char *fmt, ...) {
   CHECK_PTR_STORE_NULLABLE(0, buf, 0);
   CHECK_STRING_LOAD(1, fmt);
 
-  // Note: Since we cannot check for the buffer size before calling sprintf, we check after to
-  // limit the potential damage
+  // Note: Since we cannot check for the buffer size before calling sprintf, we
+  // check after to limit the potential damage
   va_list va;
   va_start(va, fmt);
   int result = vsprintf(buf, fmt, va);
@@ -3035,11 +3110,13 @@ int softboundcets_sprintf(char *buf, char *fmt, ...) {
 
   if (buf) {
     size_t bufsize = (size_t)buf_bound - (size_t)buf_base;
-    // The trailing null character is not included, so if the result is the same as the buffer size,
-    // we have overshot by one.
+    // The trailing null character is not included, so if the result is the same
+    // as the buffer size, we have overshot by one.
     if ((size_t)result >= bufsize) {
-      __softboundcets_error_printf("sprintf result did not fit in the provided buffer: "\
-        "buffer size = %llu, required size = %d", bufsize, result + 1);
+      __softboundcets_error_printf(
+          "sprintf result did not fit in the provided buffer: "
+          "buffer size = %llu, required size = %d",
+          bufsize, result + 1);
       __softboundcets_abort();
     }
   }
@@ -3070,7 +3147,8 @@ char *softboundcets_tempnam(char *dir, char *pfx) {
     sbcets_lock_t result_lock = nullptr;
     sbcets_key_t result_key = 0;
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, result_key, result_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3080,12 +3158,13 @@ char *softboundcets_tempnam(char *dir, char *pfx) {
 __RT_VISIBILITY
 FILE *softboundcets_tmpfile64() {
   FILE *result = tmpfile64();
-  
+
   if (result) {
     sbcets_lock_t result_lock = nullptr;
     sbcets_key_t result_key = 0;
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
-    __softboundcets_store_return_metadata(result, result + sizeof(FILE), result_key, result_lock);
+    __softboundcets_store_return_metadata(result, result + sizeof(FILE),
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3103,7 +3182,8 @@ char *softboundcets_tmpnam(char *s) {
       __softboundcets_propagate_metadata_shadow_stack_from(1, 0);
     } else {
       // Per the man page, this returns a static buffer
-      __softboundcets_store_return_metadata(result, result + L_tmpnam, 1, __softboundcets_global_lock);
+      __softboundcets_store_return_metadata(result, result + L_tmpnam, 1,
+                                            __softboundcets_global_lock);
     }
   } else {
     __softboundcets_store_null_return_metadata();
@@ -3128,16 +3208,17 @@ char *softboundcets_tmpnam_r(char *s) {
 
 __RT_VISIBILITY
 int softboundcets_vasprintf(char **ptr, char *fmt, va_list va) {
-  CHECK_PTR_STORE(0, ptr, sizeof(char*));
+  CHECK_PTR_STORE(0, ptr, sizeof(char *));
   CHECK_STRING_LOAD(1, fmt);
-  
+
   int result = vasprintf(ptr, fmt, va);
 
   if (result != -1) {
     sbcets_key_t key = 0;
     sbcets_lock_t lock = nullptr;
     __softboundcets_memory_allocation(*ptr, &lock, &key);
-    // We have sucessfully allocated, result contains the size of the buffer - 1 for \0
+    // We have sucessfully allocated, result contains the size of the buffer - 1
+    // for \0
     __softboundcets_metadata_store(*ptr, *ptr, *ptr + result + 1, key, lock);
   }
 
@@ -3181,7 +3262,6 @@ int softboundcets_vscanf(char *fmt, va_list va) {
   return vscanf(fmt, va);
 }
 
-
 __RT_VISIBILITY
 int softboundcets_vsnprintf(char *buf, size_t n, char *fmt, va_list va) {
   CHECK_PTR_STORE(0, buf, n);
@@ -3195,17 +3275,19 @@ int softboundcets_vsprintf(char *buf, char *fmt, va_list va) {
   CHECK_PTR_STORE_NULLABLE(0, buf, 0);
   CHECK_STRING_LOAD(1, fmt);
 
-  // Note: Since we cannot check for the buffer size before calling sprintf, we check after to
-  // limit the potential damage
+  // Note: Since we cannot check for the buffer size before calling sprintf, we
+  // check after to limit the potential damage
   int result = vsprintf(buf, fmt, va);
 
   if (buf) {
     size_t bufsize = (size_t)buf_bound - (size_t)buf_base;
-    // The trailing null character is not included, so if the result is the same as the buffer size,
-    // we have overshot by one.
+    // The trailing null character is not included, so if the result is the same
+    // as the buffer size, we have overshot by one.
     if ((size_t)result >= bufsize) {
-      __softboundcets_error_printf("vsprintf result did not fit in the provided buffer: "\
-        "buffer size = %llu, required size = %d", bufsize, result + 1);
+      __softboundcets_error_printf(
+          "vsprintf result did not fit in the provided buffer: "
+          "buffer size = %llu, required size = %d",
+          bufsize, result + 1);
       __softboundcets_abort();
     }
   }
@@ -3225,13 +3307,13 @@ wchar_t *softboundcets_wcscpy(wchar_t *dest, const wchar_t *src) {
   CHECK_STRING_STORE(1, dest);
   CHECK_STRING_LOAD(2, src);
 
-  size_t size = wcslen(src)*sizeof(wchar_t);
-  if (dest < dest_base || ((char*)dest > (char*)dest_bound - size - 1) ||
+  size_t size = wcslen(src) * sizeof(wchar_t);
+  if (dest < dest_base || ((char *)dest > (char *)dest_bound - size - 1) ||
       (size > (size_t)dest_bound)) {
     printf("[wcscpy] overflow in wcscpy with dest\n");
     __softboundcets_abort();
   }
-  if (src < src_base || ((char*)src > (char*)src_bound - size - 1) ||
+  if (src < src_base || ((char *)src > (char *)src_bound - size - 1) ||
       (size > (size_t)src_bound)) {
     printf("[wcscpy] overflow in wcscpy with src\n");
     __softboundcets_abort();
@@ -3252,7 +3334,8 @@ int softboundcets_access(char *name, int type) {
 
 __RT_VISIBILITY
 int softboundcets_brk(void *addr) {
-  // Note: brk only uses the address of the pointer, this is not expected to be valid
+  // Note: brk only uses the address of the pointer, this is not expected to be
+  // valid
   return brk(addr);
 }
 
@@ -3263,7 +3346,9 @@ size_t softboundcets_confstr(int name, char *buf, size_t len) {
 }
 
 __RT_VISIBILITY
-ssize_t softboundcets_copy_file_range(int infd, loff_t *inoff, int outfd, loff_t *outoff, size_t length, unsigned int flags) {
+ssize_t softboundcets_copy_file_range(int infd, loff_t *inoff, int outfd,
+                                      loff_t *outoff, size_t length,
+                                      unsigned int flags) {
   CHECK_PTR_LOAD_NULLABLE(0, inoff, sizeof(loff_t));
   CHECK_PTR_STORE_NULLABLE(1, outoff, sizeof(loff_t));
   return copy_file_range(infd, inoff, outfd, outoff, length, flags);
@@ -3276,8 +3361,8 @@ char *softboundcets_crypt(char *key, char *salt) {
 
   char *result = crypt(key, salt);
   // crypt should always return a buffer, but an invalid value on error
-  __softboundcets_store_return_metadata(result, result + CRYPT_OUTPUT_SIZE, 1, __softboundcets_global_lock);
-  return result;
+  __softboundcets_store_return_metadata(result, result + CRYPT_OUTPUT_SIZE, 1,
+__softboundcets_global_lock); return result;
 }*/
 
 __RT_VISIBILITY
@@ -3311,10 +3396,11 @@ int softboundcets_execl(char *path, char *arg0, ...) {
     sbcets_lock_t arg_lock = __softboundcets_metadata_load_lock(arg);
     sbcets_key_t arg_key = __softboundcets_metadata_load_key(arg);
 
-    __softboundcets_temporal_load_dereference_check(arg_lock, arg_key); 
-    if (!memchr(arg, '\0', (char*)arg_bound - arg)) {
-      __softboundcets_error_printf("In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
-        arg_base, arg_bound, arg);
+    __softboundcets_temporal_load_dereference_check(arg_lock, arg_key);
+    if (!memchr(arg, '\0', (char *)arg_bound - arg)) {
+      __softboundcets_error_printf(
+          "In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
+          arg_base, arg_bound, arg);
       __softboundcets_abort();
     }
 
@@ -3344,13 +3430,14 @@ static void check_string_array(char **array, sbcets_bound_t array_bound) {
     sbcets_key_t element_key = __softboundcets_metadata_load_key(element);
 
     __softboundcets_temporal_load_dereference_check(element_lock, element_key);
-    if (!memchr(*element, '\0', (char*)element_bound - *element)) {
-      __softboundcets_error_printf("In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
-        element_base, element_bound, *element);
+    if (!memchr(*element, '\0', (char *)element_bound - *element)) {
+      __softboundcets_error_printf(
+          "In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
+          element_base, element_bound, *element);
       __softboundcets_abort();
     }
   }
-  
+
   if (!null_found) {
     __softboundcets_error_printf("Array was not NULL-terminated");
     __softboundcets_abort();
@@ -3358,7 +3445,8 @@ static void check_string_array(char **array, sbcets_bound_t array_bound) {
 }
 
 __RT_VISIBILITY
-int softboundcets_execle(char *path, char *arg0, .../*, nullptr, char *envp[]*/) {
+int softboundcets_execle(char *path, char *arg0,
+                         ... /*, nullptr, char *envp[]*/) {
   CHECK_STRING_LOAD(0, path);
   CHECK_STRING_LOAD(1, arg0);
 
@@ -3376,10 +3464,11 @@ int softboundcets_execle(char *path, char *arg0, .../*, nullptr, char *envp[]*/)
     sbcets_lock_t arg_lock = __softboundcets_metadata_load_lock(arg);
     sbcets_key_t arg_key = __softboundcets_metadata_load_key(arg);
 
-    __softboundcets_temporal_load_dereference_check(arg_lock, arg_key); 
-    if (!memchr(arg, '\0', (char*)arg_bound - arg)) {
-      __softboundcets_error_printf("In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
-        arg_base, arg_bound, arg);
+    __softboundcets_temporal_load_dereference_check(arg_lock, arg_key);
+    if (!memchr(arg, '\0', (char *)arg_bound - arg)) {
+      __softboundcets_error_printf(
+          "In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
+          arg_base, arg_bound, arg);
       __softboundcets_abort();
     }
 
@@ -3394,7 +3483,7 @@ int softboundcets_execle(char *path, char *arg0, .../*, nullptr, char *envp[]*/)
   sbcets_bound_t envp_bound = __softboundcets_metadata_load_bound(envp);
   sbcets_lock_t envp_lock = __softboundcets_metadata_load_lock(envp);
   sbcets_key_t envp_key = __softboundcets_metadata_load_key(envp);
-  
+
   __softboundcets_temporal_load_dereference_check(envp_lock, envp_key);
   check_string_array(envp, envp_bound);
 #endif
@@ -3424,10 +3513,11 @@ int softboundcets_execlp(char *file, char *arg0, ...) {
     sbcets_lock_t arg_lock = __softboundcets_metadata_load_lock(arg);
     sbcets_key_t arg_key = __softboundcets_metadata_load_key(arg);
 
-    __softboundcets_temporal_load_dereference_check(arg_lock, arg_key); 
-    if (!memchr(arg, '\0', (char*)arg_bound - arg)) {
-      __softboundcets_error_printf("In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
-        arg_base, arg_bound, arg);
+    __softboundcets_temporal_load_dereference_check(arg_lock, arg_key);
+    if (!memchr(arg, '\0', (char *)arg_bound - arg)) {
+      __softboundcets_error_printf(
+          "In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
+          arg_base, arg_bound, arg);
       __softboundcets_abort();
     }
 
@@ -3445,7 +3535,7 @@ int softboundcets_execlp(char *file, char *arg0, ...) {
 __RT_VISIBILITY
 int softboundcets_execv(char *path, char **argv) {
   CHECK_STRING_LOAD(0, path);
-  CHECK_PTR_LOAD(1, argv, sizeof(char*));
+  CHECK_PTR_LOAD(1, argv, sizeof(char *));
 #if __SOFTBOUNDCETS_CHECK_LOADS
   check_string_array(argv, argv_bound);
 #endif
@@ -3456,8 +3546,8 @@ int softboundcets_execv(char *path, char **argv) {
 __RT_VISIBILITY
 int softboundcets_execve(char *path, char **argv, char **envp) {
   CHECK_STRING_LOAD(0, path);
-  CHECK_PTR_LOAD(1, argv, sizeof(char*));
-  CHECK_PTR_LOAD(2, envp, sizeof(char*));
+  CHECK_PTR_LOAD(1, argv, sizeof(char *));
+  CHECK_PTR_LOAD(2, envp, sizeof(char *));
 
 #if __SOFTBOUNDCETS_CHECK_LOADS
   check_string_array(argv, argv_bound);
@@ -3469,9 +3559,8 @@ int softboundcets_execve(char *path, char **argv, char **envp) {
 
 /* TODO: This is undefined on debian?
 __RT_VISIBILITY
-int softboundcets_execveat(int dirfd, char *path, char **argv, char **envp, int flags) {
-  CHECK_STRING_LOAD(2, path);
-  CHECK_PTR_LOAD(3, argv, sizeof(char*));
+int softboundcets_execveat(int dirfd, char *path, char **argv, char **envp, int
+flags) { CHECK_STRING_LOAD(2, path); CHECK_PTR_LOAD(3, argv, sizeof(char*));
   CHECK_PTR_LOAD(4, envp, sizeof(char*));
 
 #if __SOFTBOUNDCETS_CHECK_LOADS
@@ -3486,7 +3575,7 @@ int softboundcets_execveat(int dirfd, char *path, char **argv, char **envp, int 
 __RT_VISIBILITY
 int softboundcets_execvp(char *file, char **args) {
   CHECK_STRING_LOAD(0, file);
-  CHECK_PTR_LOAD(1, args, sizeof(char*));
+  CHECK_PTR_LOAD(1, args, sizeof(char *));
 
 #if __SOFTBOUNDCETS_CHECK_LOADS
   check_string_array(args, args_bound);
@@ -3498,8 +3587,8 @@ int softboundcets_execvp(char *file, char **args) {
 __RT_VISIBILITY
 int softboundcets_execvpe(char *file, char **args, char **envp) {
   CHECK_STRING_LOAD(0, file);
-  CHECK_PTR_LOAD(1, args, sizeof(char*));
-  CHECK_PTR_LOAD(2, envp, sizeof(char*));
+  CHECK_PTR_LOAD(1, args, sizeof(char *));
+  CHECK_PTR_LOAD(2, envp, sizeof(char *));
 
 #if __SOFTBOUNDCETS_CHECK_LOADS
   check_string_array(args, args_bound);
@@ -3517,8 +3606,8 @@ int softboundcets_faccessat(int fd, char *file, int type, int flags) {
 
 __RT_VISIBILITY
 int softboundcets_fexecve(int fd, char **argv, char **envp) {
-  CHECK_PTR_LOAD(0, argv, sizeof(char*));
-  CHECK_PTR_LOAD(1, envp, sizeof(char*));
+  CHECK_PTR_LOAD(0, argv, sizeof(char *));
+  CHECK_PTR_LOAD(1, envp, sizeof(char *));
 
 #if __SOFTBOUNDCETS_CHECK_LOADS
   check_string_array(argv, argv_bound);
@@ -3537,7 +3626,8 @@ char *softboundcets_get_current_dir_name(void) {
     sbcets_key_t result_key = 0;
 
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, result_key, result_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3571,8 +3661,8 @@ char *softboundcets_getlogin(void) {
   char *result = getlogin();
 
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
-                                          __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3592,8 +3682,10 @@ char *softboundcets_getpass(char *prompt) {
   char *result = getpass(prompt);
 
   if (result) {
-    // Note: The bound should be PASS_MAX, but in glibc, it allocates BUFSIZ instead
-    __softboundcets_store_return_metadata(result, result + BUFSIZ, 1, __softboundcets_global_lock);
+    // Note: The bound should be PASS_MAX, but in glibc, it allocates BUFSIZ
+    // instead
+    __softboundcets_store_return_metadata(result, result + BUFSIZ, 1,
+                                          __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3622,10 +3714,10 @@ char *softboundcets_getusershell(void) {
   char *result = getusershell();
 
   if (result) {
-    // The man page does not have a lot to say about this function, so I assume that the buffer is
-    // not malloc'd
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
-                                          __softboundcets_global_lock);
+    // The man page does not have a lot to say about this function, so I assume
+    // that the buffer is not malloc'd
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3673,14 +3765,17 @@ ssize_t softboundcets_pread(int fd, void *buf, size_t nbytes, off_t offset) {
 }
 
 __RT_VISIBILITY
-ssize_t softboundcets_pread64(int fd, void *buf, size_t nbytes, off64_t offset) {
+ssize_t softboundcets_pread64(int fd, void *buf, size_t nbytes,
+                              off64_t offset) {
   CHECK_PTR_STORE(0, buf, nbytes);
   return pread64(fd, buf, nbytes, offset);
 }
 
 __RT_VISIBILITY
-int softboundcets_profil(unsigned short *buf, size_t bufsize, size_t offset, unsigned int scale) {
-  // Note: buf is stored in libc and must be valid until the function is called again, I think
+int softboundcets_profil(unsigned short *buf, size_t bufsize, size_t offset,
+                         unsigned int scale) {
+  // Note: buf is stored in libc and must be valid until the function is called
+  // again, I think
   CHECK_PTR_STORE(0, buf, bufsize);
   return profil(buf, bufsize, offset, scale);
 }
@@ -3714,13 +3809,15 @@ __RT_VISIBILITY
 void *softboundcets_sbrk(intptr_t delta) {
   void *result = sbrk(delta);
   if ((intptr_t)result == (intptr_t)-1) {
-    // Note: Since NULL is actually a valid pointer here, -1 is the null pointer essentially
+    // Note: Since NULL is actually a valid pointer here, -1 is the null pointer
+    // essentially
     __softboundcets_store_null_return_metadata();
   } else {
     sbcets_lock_t result_lock = nullptr;
     sbcets_key_t result_key = 0;
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
-    __softboundcets_store_return_metadata(result, (void*)((intptr_t)result + delta), result_key, result_lock);
+    __softboundcets_store_return_metadata(
+        result, (void *)((intptr_t)result + delta), result_key, result_lock);
   }
   return result;
 }
@@ -3738,23 +3835,22 @@ int softboundcets_sethostname(char *name, size_t len) {
 }
 
 __RT_VISIBILITY
-int softboundcets_setlogin(char *name) {
-  CHECK_STRING_LOAD(0, name);
-}
+int softboundcets_setlogin(char *name) { CHECK_STRING_LOAD(0, name); }
 
 __RT_VISIBILITY
 void softboundcets_swab(void *from, void *to, ssize_t n) {
   if (n < 0) {
     // Negative n is allowed, but the function does nothing in that case
-    // We can thus return early and not have to deal with passing a negative number to the checkers
+    // We can thus return early and not have to deal with passing a negative
+    // number to the checkers
     return;
   }
 
   CHECK_PTR_LOAD(0, from, n);
   CHECK_PTR_STORE(1, to, n);
 
-  // Note: I'll not copy over any metadata since the buffer is scrambled and any pointer will be
-  // invalid after.
+  // Note: I'll not copy over any metadata since the buffer is scrambled and any
+  // pointer will be invalid after.
 
   swab(from, to, n);
 }
@@ -3786,10 +3882,10 @@ char *softboundcets_ttyname(int fd) {
   char *result = ttyname(fd);
 
   if (result) {
-    // From the man page: "The return pointer *may* point to static data", so I'll not do an
-    // allocation here.
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
-                                          __softboundcets_global_lock);
+    // From the man page: "The return pointer *may* point to static data", so
+    // I'll not do an allocation here.
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3836,7 +3932,8 @@ void *softboundcets_aligned_alloc(size_t alignment, size_t size) {
     sbcets_key_t result_key = 0;
 
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
-    __softboundcets_store_return_metadata(result, (char*)result + size, result_key, result_lock);
+    __softboundcets_store_return_metadata(result, (char *)result + size,
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3876,7 +3973,8 @@ char *softboundcets_canonicalize_file_name(char *name) {
     sbcets_key_t result_key = 0;
 
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, result_key, result_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3900,7 +3998,8 @@ char *softboundcets_ecvt(double value, int ndigits, int *decpt, int *sign) {
   // I'm not sure this ever returns null, but just in case
   if (result) {
     // The result is allocated in a static buffer
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3909,7 +4008,8 @@ char *softboundcets_ecvt(double value, int ndigits, int *decpt, int *sign) {
 }
 
 __RT_VISIBILITY
-int softboundcets_ecvt_r(double value, int ndigits, int *decpt, int *sign, char *buf, size_t len) {
+int softboundcets_ecvt_r(double value, int ndigits, int *decpt, int *sign,
+                         char *buf, size_t len) {
   CHECK_PTR_STORE(0, decpt, sizeof(int));
   CHECK_PTR_STORE(1, sign, sizeof(int));
   CHECK_PTR_STORE(2, buf, len);
@@ -3925,7 +4025,8 @@ double softboundcets_erand48(unsigned short xsubi[3]) {
 }
 
 __RT_VISIBILITY
-int softboundcets_erand48_r(unsigned short xsubi[3], struct drand48_data *buffer, double *result) {
+int softboundcets_erand48_r(unsigned short xsubi[3],
+                            struct drand48_data *buffer, double *result) {
   CHECK_PTR_STORE(0, xsubi, sizeof(unsigned short) * 3);
   CHECK_PTR_STORE(1, buffer, sizeof(struct drand48_data));
   CHECK_PTR_STORE(2, result, sizeof(double));
@@ -3940,7 +4041,8 @@ char *softboundcets_fcvt(double value, int ndigits, int *decpt, int *sign) {
 
   char *result = fcvt(value, ndigits, decpt, sign);
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1, __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -3949,14 +4051,14 @@ char *softboundcets_fcvt(double value, int ndigits, int *decpt, int *sign) {
 }
 
 __RT_VISIBILITY
-int softboundcets_fcvt_r(double value, int ndigits, int *decpt, int *sign, char *buf, size_t len) {
+int softboundcets_fcvt_r(double value, int ndigits, int *decpt, int *sign,
+                         char *buf, size_t len) {
   CHECK_PTR_STORE(0, decpt, sizeof(int));
   CHECK_PTR_STORE(1, sign, sizeof(int));
   CHECK_PTR_STORE(2, buf, len);
 
   return fcvt_r(value, ndigits, decpt, sign, buf, len);
 }
-
 
 __RT_VISIBILITY
 char *softboundcets_gcvt(double value, int ndigit, char *buf) {
@@ -3975,11 +4077,12 @@ int softboundcets_getloadavg(double *loadavg, int nelem) {
 
 __RT_VISIBILITY
 int softboundcets_getsubopt(char **optionp, char **tokens, char **valuep) {
-  CHECK_PTR_STORE(0, optionp, sizeof(char*));
-  CHECK_PTR_LOAD(1, tokens, sizeof(char*));
-  CHECK_PTR_STORE(2, valuep, sizeof(char*));
+  CHECK_PTR_STORE(0, optionp, sizeof(char *));
+  CHECK_PTR_LOAD(1, tokens, sizeof(char *));
+  CHECK_PTR_STORE(2, valuep, sizeof(char *));
 
-  // The optionp should point into a continous string -> make sure the string has a null terminator
+  // The optionp should point into a continous string -> make sure the string
+  // has a null terminator
   char *option = *optionp;
   sbcets_base_t option_base = __softboundcets_metadata_load_base(option);
   sbcets_bound_t option_bound = __softboundcets_metadata_load_bound(option);
@@ -3995,16 +4098,18 @@ int softboundcets_getsubopt(char **optionp, char **tokens, char **valuep) {
 
   if (*valuep) {
     // Since *valuep points into *optionp, we just copy over the metadata
-    __softboundcets_metadata_store(*valuep, option_base, option_bound, option_key, option_lock);
+    __softboundcets_metadata_store(*valuep, option_base, option_bound,
+                                   option_key, option_lock);
   }
 }
 
-// Since the initstate function returns the previous value, we have to keep track of its metadata
-// Note: This is set up to return universally valid metadata for the first call since
-// we do not know the location of the initial state's internal buffer in glibc
+// Since the initstate function returns the previous value, we have to keep
+// track of its metadata Note: This is set up to return universally valid
+// metadata for the first call since we do not know the location of the initial
+// state's internal buffer in glibc
 static size_t _initstate_size = 32;
 static sbcets_base_t _initstate_base = 0;
-static sbcets_bound_t _initstate_bound = (void*)281474976710656;
+static sbcets_bound_t _initstate_bound = (void *)281474976710656;
 static sbcets_lock_t _initstate_lock = __softboundcets_global_lock;
 static sbcets_key_t _initstate_key = 1;
 
@@ -4015,8 +4120,8 @@ char *softboundcets_initstate(unsigned int seed, char *state, size_t n) {
   char *result = initstate(seed, state, n);
 
   if (result) {
-    __softboundcets_store_return_metadata(_initstate_base, _initstate_bound, _initstate_key,
-                                          _initstate_lock);
+    __softboundcets_store_return_metadata(_initstate_base, _initstate_bound,
+                                          _initstate_key, _initstate_lock);
 
     _initstate_size = n;
     _initstate_base = state_base;
@@ -4031,7 +4136,8 @@ char *softboundcets_initstate(unsigned int seed, char *state, size_t n) {
 }
 
 __RT_VISIBILITY
-int softboundcets_initstate_r(unsigned int seed, char *state, size_t n, struct random_data *buf) {
+int softboundcets_initstate_r(unsigned int seed, char *state, size_t n,
+                              struct random_data *buf) {
   CHECK_PTR_LOAD(0, state, n);
   CHECK_PTR_STORE(1, buf, sizeof(struct random_data));
 
@@ -4046,7 +4152,8 @@ long softboundcets_jrand48(unsigned short xsubi[3]) {
 }
 
 __RT_VISIBILITY
-int softboundcets_jrand48_r(unsigned short xsubi[3], struct drand48_data *buf, long *result) {
+int softboundcets_jrand48_r(unsigned short xsubi[3], struct drand48_data *buf,
+                            long *result) {
   CHECK_PTR_STORE(0, xsubi, sizeof(unsigned short) * 3);
   CHECK_PTR_STORE(1, buf, sizeof(struct drand48_data));
   CHECK_PTR_STORE(2, result, sizeof(long));
@@ -4060,8 +4167,8 @@ char *softboundcets_l64a(long n) {
 
   // I'm not sure if this ever returns null, but better to be sure
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
-                                          __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -4165,12 +4272,11 @@ int softboundcets_mkstemps64(char *path_template, int suffixlen) {
   return mkstemps64(path_template, suffixlen);
 }
 
-
 __RT_VISIBILITY
 char *softboundcets_mktemp(char *path_template) {
   CHECK_STRING_STORE(1, path_template);
   __softboundcets_propagate_metadata_shadow_stack_from(1, 0);
-  
+
   return mktemp(path_template);
 }
 
@@ -4190,7 +4296,8 @@ long softboundcets_nrand48(unsigned short xsubi[3]) {
 }
 
 __RT_VISIBILITY
-int softboundcets_nrand48_r(unsigned short xsubi[3], struct drand48_data *buf, long *result) {
+int softboundcets_nrand48_r(unsigned short xsubi[3], struct drand48_data *buf,
+                            long *result) {
   CHECK_PTR_STORE(0, xsubi, sizeof(unsigned short) * 3);
   CHECK_PTR_STORE(1, buf, sizeof(struct drand48_data));
   CHECK_PTR_STORE(2, result, sizeof(long));
@@ -4202,7 +4309,8 @@ __RT_VISIBILITY
 int softboundcets_on_exit(void (*func)(int status, void *arg), void *arg) {
   CHECK_PTR_LOAD(0, func, 0);
   // Note: Arg should be valid when the on_exit function is called.
-  // TODO: We could wrap the callback as well, but that would probably require us to leak memory
+  // TODO: We could wrap the callback as well, but that would probably require
+  // us to leak memory
   CHECK_PTR_LOAD(1, arg, 0);
 
   return on_exit(func, arg);
@@ -4210,7 +4318,7 @@ int softboundcets_on_exit(void (*func)(int status, void *arg), void *arg) {
 
 __RT_VISIBILITY
 int softboundcets_posix_memalign(void **ptr, size_t alignment, size_t size) {
-  CHECK_PTR_STORE(0, ptr, sizeof(void*));
+  CHECK_PTR_STORE(0, ptr, sizeof(void *));
 
   int result = posix_memalign(ptr, alignment, size);
   if (result == 0) {
@@ -4218,7 +4326,8 @@ int softboundcets_posix_memalign(void **ptr, size_t alignment, size_t size) {
     sbcets_key_t result_key = 0;
 
     __softboundcets_memory_allocation(*ptr, &result_lock, &result_key);
-    __softboundcets_metadata_store(*ptr, *ptr, (char*)*ptr + size, result_key, result_lock);
+    __softboundcets_metadata_store(*ptr, *ptr, (char *)*ptr + size, result_key,
+                                   result_lock);
   }
 
   return result;
@@ -4229,8 +4338,8 @@ char *softboundcets_ptsname(int fd) {
   char *result = ptsname(fd);
 
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
-                                          __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -4253,15 +4362,16 @@ int softboundcets_putenv(char *string) {
 }
 
 __RT_VISIBILITY
-char *softboundcets_qecvt(long double value, int ndigit, int *decpt, int *sign) {
+char *softboundcets_qecvt(long double value, int ndigit, int *decpt,
+                          int *sign) {
   CHECK_PTR_STORE(1, decpt, sizeof(int));
   CHECK_PTR_STORE(2, sign, sizeof(int));
 
   char *result = qecvt(value, ndigit, decpt, sign);
 
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
-                                          __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -4270,7 +4380,8 @@ char *softboundcets_qecvt(long double value, int ndigit, int *decpt, int *sign) 
 }
 
 __RT_VISIBILITY
-int softboundcets_qecvt_r(long double value, int ndigit, int *decpt, int *sign, char *buf, size_t n) {
+int softboundcets_qecvt_r(long double value, int ndigit, int *decpt, int *sign,
+                          char *buf, size_t n) {
   CHECK_PTR_STORE(0, decpt, sizeof(int));
   CHECK_PTR_STORE(1, sign, sizeof(int));
   CHECK_PTR_STORE(2, buf, n);
@@ -4279,15 +4390,16 @@ int softboundcets_qecvt_r(long double value, int ndigit, int *decpt, int *sign, 
 }
 
 __RT_VISIBILITY
-char *softboundcets_qfcvt(long double value, int ndigit, int *decpt, int *sign) {
+char *softboundcets_qfcvt(long double value, int ndigit, int *decpt,
+                          int *sign) {
   CHECK_PTR_STORE(1, decpt, sizeof(int));
   CHECK_PTR_STORE(2, sign, sizeof(int));
 
   char *result = qfcvt(value, ndigit, decpt, sign);
 
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
-                                          __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -4296,7 +4408,8 @@ char *softboundcets_qfcvt(long double value, int ndigit, int *decpt, int *sign) 
 }
 
 __RT_VISIBILITY
-int softboundcets_qfcvt_r(long double value, int ndigit, int *decpt, int *sign, char *buf, size_t n) {
+int softboundcets_qfcvt_r(long double value, int ndigit, int *decpt, int *sign,
+                          char *buf, size_t n) {
   CHECK_PTR_STORE(0, decpt, sizeof(int));
   CHECK_PTR_STORE(1, sign, sizeof(int));
   CHECK_PTR_STORE(2, buf, n);
@@ -4312,15 +4425,16 @@ char *softboundcets_qgcvt(long double value, int ndigit, char *buf) {
 }
 
 /*
- * We use heapsort for qsort_r, since it provides nlogn runtime complexity while not requiring
- * memory allocations on the heap or the stack.
- * Glibc uses mergesort and falls back to heapsort in case the allocator fails, which would be
- * better for performance but I do not want to implement two sorting algorithms.
- * 
+ * We use heapsort for qsort_r, since it provides nlogn runtime complexity while
+ * not requiring memory allocations on the heap or the stack. Glibc uses
+ * mergesort and falls back to heapsort in case the allocator fails, which would
+ * be better for performance but I do not want to implement two sorting
+ * algorithms.
+ *
  * We build a max heap in-place in the array we have to sort.
- * After that, we put the largest (root) element at the back and end up with an array sorted in
- * ascending order.
- * The heap is a binary tree where for index i, its children are at 2 * i + 1 and 2 * i + 2.
+ * After that, we put the largest (root) element at the back and end up with an
+ * array sorted in ascending order. The heap is a binary tree where for index i,
+ * its children are at 2 * i + 1 and 2 * i + 2.
  */
 
 typedef struct {
@@ -4335,15 +4449,16 @@ typedef struct {
   sbcets_key_t arg_key;
 } _qsort_r_meta;
 
-
 typedef int (*_qsort_r_cmp_fn)(void *left, void *right, void *arg);
 
-__attribute__((always_inline))
-int _qsort_r_call_cmp(_qsort_r_cmp_fn cmp, void *left, void *right, void *arg,
-                             _qsort_r_meta meta) {
+__attribute__((always_inline)) int _qsort_r_call_cmp(_qsort_r_cmp_fn cmp,
+                                                     void *left, void *right,
+                                                     void *arg,
+                                                     _qsort_r_meta meta) {
   __softboundcets_allocate_shadow_stack_space(3);
 
-  // Since both left and right point into the same array, we pass the arrays metadata here
+  // Since both left and right point into the same array, we pass the arrays
+  // metadata here
   __softboundcets_store_base_shadow_stack(meta.array_base, 0);
   __softboundcets_store_bound_shadow_stack(meta.array_bound, 0);
   __softboundcets_store_lock_shadow_stack(meta.array_lock, 0);
@@ -4366,9 +4481,10 @@ int _qsort_r_call_cmp(_qsort_r_cmp_fn cmp, void *left, void *right, void *arg,
   return result;
 }
 
-__attribute__((always_inline))
-void _qsort_r_swap_element(char *ptr1, char *ptr2, size_t size, bool is_ptr) {
-  // We could probably make this more efficient by copying in word-size steps but oh well
+__attribute__((always_inline)) void
+_qsort_r_swap_element(char *ptr1, char *ptr2, size_t size, bool is_ptr) {
+  // We could probably make this more efficient by copying in word-size steps
+  // but oh well
   for (size_t i = 0; i < size; i++) {
     char swap = ptr1[i];
     ptr1[i] = ptr2[i];
@@ -4376,22 +4492,27 @@ void _qsort_r_swap_element(char *ptr1, char *ptr2, size_t size, bool is_ptr) {
   }
 
   if (is_ptr) {
-    for (size_t i = 0; i < size; i += sizeof(void*)) {
-      __softboundcets_metadata_t *ptr1_meta = __softboundcets_shadowspace_metadata_ptr_create_secondary_tries(&ptr1[i]);
-      __softboundcets_metadata_t *ptr2_meta = __softboundcets_shadowspace_metadata_ptr_create_secondary_tries(&ptr2[i]);
+    for (size_t i = 0; i < size; i += sizeof(void *)) {
+      __softboundcets_metadata_t *ptr1_meta =
+          __softboundcets_shadowspace_metadata_ptr_create_secondary_tries(
+              &ptr1[i]);
+      __softboundcets_metadata_t *ptr2_meta =
+          __softboundcets_shadowspace_metadata_ptr_create_secondary_tries(
+              &ptr2[i]);
 
       sbcets_base_t ptr1_base = nullptr;
       sbcets_bound_t ptr1_bound = nullptr;
       sbcets_lock_t ptr1_lock = nullptr;
       sbcets_key_t ptr1_key = 0;
-      
+
       sbcets_base_t ptr2_base = nullptr;
       sbcets_bound_t ptr2_bound = nullptr;
       sbcets_lock_t ptr2_lock = nullptr;
       sbcets_key_t ptr2_key = 0;
 
-      // We have to feature gate these assignments since the __softboundcets_metadata_t struct is
-      // defined differently based on the flags
+      // We have to feature gate these assignments since the
+      // __softboundcets_metadata_t struct is defined differently based on the
+      // flags
 #if __SOFTBOUNDCETS_SPATIAL || __SOFTBOUNDCETS_SPATIAL_TEMPORAL
       ptr1_base = ptr1_meta->base;
       ptr1_bound = ptr1_meta->bound;
@@ -4408,32 +4529,38 @@ void _qsort_r_swap_element(char *ptr1, char *ptr2, size_t size, bool is_ptr) {
       ptr2_key = ptr2_meta->key;
 #endif
 
-      __softboundcets_metadata_store(&ptr1[i], ptr1_base, ptr1_bound, ptr1_key, ptr1_lock);
-      __softboundcets_metadata_store(&ptr2[i], ptr2_base, ptr2_bound, ptr2_key, ptr2_lock);
+      __softboundcets_metadata_store(&ptr1[i], ptr1_base, ptr1_bound, ptr1_key,
+                                     ptr1_lock);
+      __softboundcets_metadata_store(&ptr2[i], ptr2_base, ptr2_bound, ptr2_key,
+                                     ptr2_lock);
     }
   }
 }
 
-__attribute__((always_inline))
-void _qsort_r_sift_down(char *array, size_t nmemb, size_t size, _qsort_r_cmp_fn cmp,
-                               void *arg, bool is_ptr, size_t parent, _qsort_r_meta meta) {
+__attribute__((always_inline)) void
+_qsort_r_sift_down(char *array, size_t nmemb, size_t size, _qsort_r_cmp_fn cmp,
+                   void *arg, bool is_ptr, size_t parent, _qsort_r_meta meta) {
   while (2 * parent + 1 < nmemb) {
     // We select the left child first, since it has to exist
     size_t child = 2 * parent + 1;
 
     // If the right child exists and is larger, consieder it instead
-    if (child + 1 < nmemb && _qsort_r_call_cmp(cmp, &array[child * size],
-        &array[(child + 1) * size], arg, meta) < 0) {
+    if (child + 1 < nmemb &&
+        _qsort_r_call_cmp(cmp, &array[child * size], &array[(child + 1) * size],
+                          arg, meta) < 0) {
       child++;
     }
 
     // Now we compare the larger child with the parent and swap them if larger
-    // Since we swapped with the larger child, the heap property is valid at the current element
-    if (_qsort_r_call_cmp(cmp, &array[parent * size], &array[child * size], arg, meta) < 0) {
-      _qsort_r_swap_element(&array[parent * size], &array[child * size], size, is_ptr);
-      // Since we swapped the child element with a smaller value, we may have broken the heap
-      // property.
-      // To fix this, we attempt a swap at the child index again.
+    // Since we swapped with the larger child, the heap property is valid at the
+    // current element
+    if (_qsort_r_call_cmp(cmp, &array[parent * size], &array[child * size], arg,
+                          meta) < 0) {
+      _qsort_r_swap_element(&array[parent * size], &array[child * size], size,
+                            is_ptr);
+      // Since we swapped the child element with a smaller value, we may have
+      // broken the heap property. To fix this, we attempt a swap at the child
+      // index again.
       parent = child;
     } else {
       // Since we did nothing, we can stop
@@ -4442,9 +4569,9 @@ void _qsort_r_sift_down(char *array, size_t nmemb, size_t size, _qsort_r_cmp_fn 
   }
 }
 
-__attribute__((always_inline))
-void _qsort_r_heapify(char *array, size_t nmemb, size_t size, _qsort_r_cmp_fn cmp,
-                             void *arg, bool is_ptr, _qsort_r_meta meta) {
+__attribute__((always_inline)) void
+_qsort_r_heapify(char *array, size_t nmemb, size_t size, _qsort_r_cmp_fn cmp,
+                 void *arg, bool is_ptr, _qsort_r_meta meta) {
   // The start of the heap is the parent of the last element
   for (size_t start = nmemb / 2; start > 0; start--) {
     _qsort_r_sift_down(array, nmemb, size, cmp, arg, is_ptr, start - 1, meta);
@@ -4452,40 +4579,42 @@ void _qsort_r_heapify(char *array, size_t nmemb, size_t size, _qsort_r_cmp_fn cm
 }
 
 __RT_VISIBILITY
-void softboundcets_qsort_r(void *base, size_t nmemb, size_t size, _qsort_r_cmp_fn cmp, void *arg) {
+void softboundcets_qsort_r(void *base, size_t nmemb, size_t size,
+                           _qsort_r_cmp_fn cmp, void *arg) {
   CHECK_PTR_STORE(0, base, nmemb * size);
   CHECK_PTR_LOAD(1, cmp, 0);
   CHECK_PTR_LOAD_NULLABLE(2, arg, 0);
 
   bool is_ptr = false;
-  char *array = (char*)base;
+  char *array = (char *)base;
 
-  _qsort_r_meta meta = {
-    .array_base = base_base,
-    .array_bound = base_bound,
-    .array_lock = base_lock,
-    .array_key = base_key,
+  _qsort_r_meta meta = {.array_base = base_base,
+                        .array_bound = base_bound,
+                        .array_lock = base_lock,
+                        .array_key = base_key,
 
-    .arg_base = arg_base,
-    .arg_bound = arg_bound,
-    .arg_lock = arg_lock,
-    .arg_key = arg_key
-  };
+                        .arg_base = arg_base,
+                        .arg_bound = arg_bound,
+                        .arg_lock = arg_lock,
+                        .arg_key = arg_key};
 
   // NOTE:
-  // We first check if the data to sort contains pointers. If so, we have to swap metadata as well.
-  // We assume that data is homogeneous and check the first element for pointers by looking for
-  // secondary tries.
-  // Note that this can lead to false positives/negatives when our assumption is incorrect and/or
-  // a non-pointer value would also be a valid pointer.
-  // We could also check for trie entries in every swap for correctness at the cost of performance
-  for (size_t i = 0; i < size; i += sizeof(void*)) {
-    // Reinterpret the array as a pointer-sized array and get the potential trie index
-    size_t primary_index = ((size_t*)array)[i] >> 25;
+  // We first check if the data to sort contains pointers. If so, we have to
+  // swap metadata as well. We assume that data is homogeneous and check the
+  // first element for pointers by looking for secondary tries. Note that this
+  // can lead to false positives/negatives when our assumption is incorrect
+  // and/or a non-pointer value would also be a valid pointer. We could also
+  // check for trie entries in every swap for correctness at the cost of
+  // performance
+  for (size_t i = 0; i < size; i += sizeof(void *)) {
+    // Reinterpret the array as a pointer-sized array and get the potential trie
+    // index
+    size_t primary_index = ((size_t *)array)[i] >> 25;
     // Check if the primary trie contains a secondary tree for this element
     // If it does, assume this is a pointer
     // TODO: Is this reasonable?
-    __softboundcets_metadata_t *secondary_index = __softboundcets_trie_primary_table[primary_index];
+    __softboundcets_metadata_t *secondary_index =
+        (__softboundcets_trie_primary_table[primary_index].real_ptr);
     if (secondary_index != nullptr) {
       is_ptr = true;
       break;
@@ -4535,7 +4664,8 @@ char *softboundcets_realpath(char *name, char *resolved) {
       sbcets_key_t result_key = 0;
       __softboundcets_memory_allocation(result, &result_lock, &result_key);
       // TODO: Check the allocation again
-      __softboundcets_store_return_metadata(result, result + PATH_MAX, result_key, result_lock);
+      __softboundcets_store_return_metadata(result, result + PATH_MAX,
+                                            result_key, result_lock);
     }
   } else {
     __softboundcets_store_null_return_metadata();
@@ -4550,8 +4680,8 @@ char *softboundcets_secure_getenv(char *name) {
 
   char *result = secure_getenv(name);
   if (result) {
-    __softboundcets_store_return_metadata(result, result + strlen(result) + 1, 1,
-                                          __softboundcets_global_lock);
+    __softboundcets_store_return_metadata(result, result + strlen(result) + 1,
+                                          1, __softboundcets_global_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -4564,7 +4694,8 @@ unsigned short *softboundcets_seed48(unsigned short seed[3]) {
 
   unsigned short *result = seed48(seed);
   // seed48 stores the previous buffer in a static buffer that is returned
-  __softboundcets_store_return_metadata(result, result + sizeof(unsigned short) * 3, 1,
+  __softboundcets_store_return_metadata(result,
+                                        result + sizeof(unsigned short) * 3, 1,
                                         __softboundcets_global_lock);
 
   return result;
@@ -4585,8 +4716,8 @@ char *softboundcets_setstate(char *state) {
 
   char *result = setstate(state);
 
-  __softboundcets_store_return_metadata(_initstate_base, _initstate_bound, _initstate_key,
-                                        _initstate_lock);
+  __softboundcets_store_return_metadata(_initstate_base, _initstate_bound,
+                                        _initstate_key, _initstate_lock);
 
   _initstate_base = state_base;
   _initstate_bound = state_bound;
@@ -4637,16 +4768,16 @@ int softboundcets_strfromf(char *dest, size_t size, char *format, float f) {
 
 /*
 __RT_VISIBILITY
-int softboundcets_strfromf128(char *dest, size_t size, char *format, _Float128 f) {
-  CHECK_PTR_STORE(0, dest, size);
-  CHECK_STRING_LOAD(1, format);
+int softboundcets_strfromf128(char *dest, size_t size, char *format, _Float128
+f) { CHECK_PTR_STORE(0, dest, size); CHECK_STRING_LOAD(1, format);
 
   return strfromf128(dest, size, format, f);
 }
 */
 
 __RT_VISIBILITY
-int softboundcets_strfromf32(char *dest, size_t size, char *format, _Float32 f) {
+int softboundcets_strfromf32(char *dest, size_t size, char *format,
+                             _Float32 f) {
   CHECK_PTR_STORE(0, dest, size);
   CHECK_STRING_LOAD(1, format);
 
@@ -4654,7 +4785,8 @@ int softboundcets_strfromf32(char *dest, size_t size, char *format, _Float32 f) 
 }
 
 __RT_VISIBILITY
-int softboundcets_strfromf32x(char *dest, size_t size, char *format, _Float32x f) {
+int softboundcets_strfromf32x(char *dest, size_t size, char *format,
+                              _Float32x f) {
   CHECK_PTR_STORE(0, dest, size);
   CHECK_STRING_LOAD(1, format);
 
@@ -4662,7 +4794,8 @@ int softboundcets_strfromf32x(char *dest, size_t size, char *format, _Float32x f
 }
 
 __RT_VISIBILITY
-int softboundcets_strfromf64(char *dest, size_t size, char *format, _Float64 f) {
+int softboundcets_strfromf64(char *dest, size_t size, char *format,
+                             _Float64 f) {
   CHECK_PTR_STORE(0, dest, size);
   CHECK_STRING_LOAD(1, format);
 
@@ -4670,7 +4803,8 @@ int softboundcets_strfromf64(char *dest, size_t size, char *format, _Float64 f) 
 }
 
 __RT_VISIBILITY
-int softboundcets_strfromf64x(char *dest, size_t size, char *format, _Float64x f) {
+int softboundcets_strfromf64x(char *dest, size_t size, char *format,
+                              _Float64x f) {
   CHECK_PTR_STORE(0, dest, size);
   CHECK_STRING_LOAD(1, format);
 
@@ -4678,7 +4812,8 @@ int softboundcets_strfromf64x(char *dest, size_t size, char *format, _Float64x f
 }
 
 __RT_VISIBILITY
-int softboundcets_strfroml(char *dest, size_t size, char *format, long double f) {
+int softboundcets_strfroml(char *dest, size_t size, char *format,
+                           long double f) {
   CHECK_PTR_STORE(0, dest, size);
   CHECK_STRING_LOAD(1, format);
 
@@ -4688,11 +4823,13 @@ int softboundcets_strfroml(char *dest, size_t size, char *format, long double f)
 __RT_VISIBILITY
 double softboundcets_strtod_l(char *nptr, char **endptr, locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtod_l(nptr, endptr, locale);
@@ -4701,11 +4838,13 @@ double softboundcets_strtod_l(char *nptr, char **endptr, locale_t locale) {
 __RT_VISIBILITY
 float softboundcets_strtof(char *nptr, char **endptr) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof(nptr, endptr);
@@ -4718,21 +4857,25 @@ _Float128 softboundcets_strtof128(char *nptr, char **endptr) {
   CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+nptr_lock);
   }
 
   return strtof128(nptr, endptr);
 }
 
 __RT_VISIBILITY
-_Float128 softboundcets_strtof128_l(char *nptr, char **endptr, locale_t locale) {
-  CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+_Float128 softboundcets_strtof128_l(char *nptr, char **endptr, locale_t locale)
+{ CHECK_STRING_LOAD(0, nptr); CHECK_PTR_STORE_NULLABLE(1, endptr,
+sizeof(char*));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+nptr_lock);
   }
 
   return strtof128_l(nptr, endptr, locale);
@@ -4742,11 +4885,13 @@ _Float128 softboundcets_strtof128_l(char *nptr, char **endptr, locale_t locale) 
 __RT_VISIBILITY
 _Float32 softboundcets_strtof32(char *nptr, char **endptr) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof32(nptr, endptr);
@@ -4755,11 +4900,13 @@ _Float32 softboundcets_strtof32(char *nptr, char **endptr) {
 __RT_VISIBILITY
 _Float32 softboundcets_strtof32_l(char *nptr, char **endptr, locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof32_l(nptr, endptr, locale);
@@ -4768,24 +4915,29 @@ _Float32 softboundcets_strtof32_l(char *nptr, char **endptr, locale_t locale) {
 __RT_VISIBILITY
 _Float32x softboundcets_strtof32x(char *nptr, char **endptr) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof32x(nptr, endptr);
 }
 
 __RT_VISIBILITY
-_Float32x softboundcets_strtof32x_l(char *nptr, char **endptr, locale_t locale) {
+_Float32x softboundcets_strtof32x_l(char *nptr, char **endptr,
+                                    locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof32x_l(nptr, endptr, locale);
@@ -4794,11 +4946,13 @@ _Float32x softboundcets_strtof32x_l(char *nptr, char **endptr, locale_t locale) 
 __RT_VISIBILITY
 _Float64 softboundcets_strtof64(char *nptr, char **endptr) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof64(nptr, endptr);
@@ -4807,11 +4961,13 @@ _Float64 softboundcets_strtof64(char *nptr, char **endptr) {
 __RT_VISIBILITY
 _Float64 softboundcets_strtof64_l(char *nptr, char **endptr, locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof64_l(nptr, endptr, locale);
@@ -4820,24 +4976,29 @@ _Float64 softboundcets_strtof64_l(char *nptr, char **endptr, locale_t locale) {
 __RT_VISIBILITY
 _Float64x softboundcets_strtof64x(char *nptr, char **endptr) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof64x(nptr, endptr);
 }
 
 __RT_VISIBILITY
-_Float64x softboundcets_strtof64x_l(char *nptr, char **endptr, locale_t locale) {
+_Float64x softboundcets_strtof64x_l(char *nptr, char **endptr,
+                                    locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof64x_l(nptr, endptr, locale);
@@ -4846,24 +5007,29 @@ _Float64x softboundcets_strtof64x_l(char *nptr, char **endptr, locale_t locale) 
 __RT_VISIBILITY
 float softboundcets_strtof_l(char *nptr, char **endptr, locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtof_l(nptr, endptr, locale);
 }
 
 __RT_VISIBILITY
-long softboundcets_strtol_l(char *nptr, char **endptr, int base, locale_t locale) {
+long softboundcets_strtol_l(char *nptr, char **endptr, int base,
+                            locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtol_l(nptr, endptr, base, locale);
@@ -4872,24 +5038,29 @@ long softboundcets_strtol_l(char *nptr, char **endptr, int base, locale_t locale
 __RT_VISIBILITY
 long double softboundcets_strtold(char *nptr, char **endptr) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtold(nptr, endptr);
 }
 
 __RT_VISIBILITY
-long double softboundcets_strtold_l(char *nptr, char **endptr, locale_t locale) {
+long double softboundcets_strtold_l(char *nptr, char **endptr,
+                                    locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtold_l(nptr, endptr, locale);
@@ -4898,24 +5069,29 @@ long double softboundcets_strtold_l(char *nptr, char **endptr, locale_t locale) 
 __RT_VISIBILITY
 long long softboundcets_strtoll(char *nptr, char **endptr, int base) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtoll(nptr, endptr, base);
 }
 
 __RT_VISIBILITY
-long long softboundcets_strtoll_l(char *nptr, char **endptr, int base, locale_t locale) {
+long long softboundcets_strtoll_l(char *nptr, char **endptr, int base,
+                                  locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtoll_l(nptr, endptr, base, locale);
@@ -4924,24 +5100,29 @@ long long softboundcets_strtoll_l(char *nptr, char **endptr, int base, locale_t 
 __RT_VISIBILITY
 long long softboundcets_strtoq(char *nptr, char **endptr, int base) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtoq(nptr, endptr, base);
 }
 
 __RT_VISIBILITY
-unsigned long softboundcets_strtoul_l(char *nptr, char **endptr, int base, locale_t locale) {
+unsigned long softboundcets_strtoul_l(char *nptr, char **endptr, int base,
+                                      locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtoul_l(nptr, endptr, base, locale);
@@ -4950,24 +5131,29 @@ unsigned long softboundcets_strtoul_l(char *nptr, char **endptr, int base, local
 __RT_VISIBILITY
 unsigned long long softboundcets_strtoull(char *nptr, char **endptr, int base) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtoull(nptr, endptr, base);
 }
 
 __RT_VISIBILITY
-unsigned long long softboundcets_strtoull_l(char *nptr, char **endptr, int base, locale_t locale) {
+unsigned long long softboundcets_strtoull_l(char *nptr, char **endptr, int base,
+                                            locale_t locale) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtoull_l(nptr, endptr, base, locale);
@@ -4976,11 +5162,13 @@ unsigned long long softboundcets_strtoull_l(char *nptr, char **endptr, int base,
 __RT_VISIBILITY
 unsigned long long softboundcets_strtouq(char *nptr, char **endptr, int base) {
   CHECK_STRING_LOAD(0, nptr);
-  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char*));
+  CHECK_PTR_STORE_NULLABLE(1, endptr, sizeof(char *));
 
   if (endptr != nullptr) {
-    // If not null, endptr will point into the same buffer as nptr, even on error
-    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key, nptr_lock);
+    // If not null, endptr will point into the same buffer as nptr, even on
+    // error
+    __softboundcets_metadata_store(*endptr, nptr_base, nptr_bound, nptr_key,
+                                   nptr_lock);
   }
 
   return strtouq(nptr, endptr, base);
@@ -4992,9 +5180,10 @@ size_t softboundcets_wcstombs(char *s, wchar_t *wstr, size_t n) {
   LOAD_PTR_BOUNDS(1, wstr);
 
 #if __SOFTBOUNDCETS_CHECK_LOADS
-  if (!wmemchr(wstr, L'\0', (wchar_t*)wstr_bound - (wchar_t*)wstr)) {
-    __softboundcets_error_printf("In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
-      wstr_base, wstr_bound, wstr);
+  if (!wmemchr(wstr, L'\0', (wchar_t *)wstr_bound - (wchar_t *)wstr)) {
+    __softboundcets_error_printf(
+        "In string load dereference check: base=%zx, bound=%zx, ptr=%zx",
+        wstr_base, wstr_bound, wstr);
     __softboundcets_abort();
   }
 #endif
@@ -5014,14 +5203,15 @@ __RT_VISIBILITY
 void *softboundcets_reallocarray(void *ptr, size_t nmemb, size_t size) {
   LOAD_PTR_BOUNDS(1, ptr);
   LOAD_PTR_LOCK(1, ptr);
-  // We do not check the pointer here since the allocator has its own metadata for that
+  // We do not check the pointer here since the allocator has its own metadata
+  // for that
 
   void *result = reallocarray(ptr, nmemb, size);
 
   if (result) {
     sbcets_base_t result_base = result;
     // This cannot overflow since reallocarray succeeded
-    sbcets_bound_t result_bound = (char*)result + nmemb * size;
+    sbcets_bound_t result_bound = (char *)result + nmemb * size;
     sbcets_lock_t result_lock = nullptr;
     sbcets_key_t result_key = 0;
     if (ptr != result) {
@@ -5040,11 +5230,13 @@ void *softboundcets_reallocarray(void *ptr, size_t nmemb, size_t size) {
       __softboundcets_store_bound_shadow_stack(result_bound, 1);
     }
 
-    __softboundcets_store_return_metadata(result_base, result_bound, result_key, result_lock);
+    __softboundcets_store_return_metadata(result_base, result_bound, result_key,
+                                          result_lock);
   } else {
-    // If the reallocarray function returned NULL, the pointer may have been free'd if size was 0.
-    // We also check if the pointer has a key value > 1 (0: not allocated, 1: global lock) in case
-    // someone tried to deallocate a static variable.
+    // If the reallocarray function returned NULL, the pointer may have been
+    // free'd if size was 0. We also check if the pointer has a key value > 1
+    // (0: not allocated, 1: global lock) in case someone tried to deallocate a
+    // static variable.
     // TODO: Is this sufficient to check for errors?
     if (size == 0 && ptr_key > 1) {
       __softboundcets_memory_deallocation(ptr_lock, ptr_key);
@@ -5081,7 +5273,8 @@ void *softboundcets_memalign(size_t alignment, size_t size) {
     sbcets_key_t result_key = 0;
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
 
-    __softboundcets_store_return_metadata(result, (char*)result + size, result_key, result_lock);
+    __softboundcets_store_return_metadata(result, (char *)result + size,
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -5107,8 +5300,8 @@ void *softboundcets_pvalloc(size_t size) {
     sbcets_key_t result_key = 0;
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
 
-    __softboundcets_store_return_metadata(result, (char*)result + real_size, result_key,
-                                          result_lock);
+    __softboundcets_store_return_metadata(result, (char *)result + real_size,
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
@@ -5125,7 +5318,8 @@ void *softboundcets_valloc(size_t size) {
     sbcets_key_t result_key = 0;
     __softboundcets_memory_allocation(result, &result_lock, &result_key);
 
-    __softboundcets_store_return_metadata(result, (char*)result + size, result_key, result_lock);
+    __softboundcets_store_return_metadata(result, (char *)result + size,
+                                          result_key, result_lock);
   } else {
     __softboundcets_store_null_return_metadata();
   }
