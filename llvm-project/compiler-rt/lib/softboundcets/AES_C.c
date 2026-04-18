@@ -269,9 +269,7 @@ unsigned char *EncryptECB(struct aes * aes_obj, const unsigned char in[], unsign
   for (unsigned int i = 0; i < inLen; i += aes_obj->block_bytes_len) {
     EncryptBlock(aes_obj, in + i, out + i, roundKeys);
   }
-
   free(roundKeys);
-
   return out;
 }
 

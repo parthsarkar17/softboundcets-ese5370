@@ -230,14 +230,13 @@ __attribute__((__weak__))
 #if !__SOFTBOUNDCETS_CONTINUE_ON_ABORT
 __attribute__((__noreturn__))
 #endif
-extern void
-__softboundcets_abort(void);
+extern void __softboundcets_abort(void);
 
 __WEAK__ extern void __softboundcets_printf(const char *str, ...);
 __WEAK__ extern void __softboundcets_debug_printf(const char *str, ...);
 __WEAK__ extern void __softboundcets_error_printf(const char *str, ...);
 
-__attribute__((always_inline,__weak__)) void
+__attribute__((always_inline, __weak__)) void
 __softboundcets_log_message(int level, const char *str, ...);
 
 extern size_t *__softboundcets_global_lock;

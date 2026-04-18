@@ -57,7 +57,7 @@
 #if !defined(__FreeBSD__)
 #include <execinfo.h>
 #endif
-#include "AES_C.h"
+
 #include "softboundcets.h"
 
 #define USE_AES
@@ -130,24 +130,45 @@ void softboundcets_init_ctype(void) {
 
 #ifdef USE_AES
 
-u_int64_t silly_xor_key = 0xfeeddead;
-// u_int64_t silly_xor_key = 0x00000000;
+extern "C" {
+#include "AES_C.h"
+}
 
-// __attribute__((always_inline)) __softboundcets_metadata_t *
-// encrypt_decrypt_primary_table_entry(__softboundcets_metadata_t *entry, int i)
-// {
-//   return (__softboundcets_metadata_t *)(((u_int64_t)(entry)) ^
-//   silly_xor_key);
-// }
+unsigned char plain[16];
+unsigned char key[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                       0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
+unsigned int plain_len = 16 * sizeof(unsigned char);
+struct aes *aes_obj;
+unsigned initialized_aes_obj = 0;
+
+void initialize_aes_obj() {
+  if (!initialized_aes_obj) {
+    aes_obj = from_keylength(plain_len);
+    initialized_aes_obj = 1;
+  }
+}
 
 __softboundcets_metadata_t *
 encrypt_primary_table_entry(__softboundcets_metadata_t *entry, int i) {
-  return (__softboundcets_metadata_t *)(((u_int64_t)(entry)) ^ silly_xor_key);
+
+  // since encryption happens on every 16B block, and each pointer is 8B,
+  // we need to encrypt two pointers together. hence, we need to decrypt the
+  // entire 16B word in order to insert the new
+  void *aligned;
+  if (i % 2 == 0) {
+    aligned = (void *)entry;
+  } else {
+    aligned = ((void *)entry) - sizeof(__softboundcets_metadata_t);
+  }
+
+  unsigned char *encypted = EncryptECB(aes_obj, plain, plain_len, key);
+  return entry;
 }
 
 __softboundcets_metadata_t *
 decrypt_primary_table_entry(__softboundcets_metadata_t *entry, int i) {
-  return (__softboundcets_metadata_t *)(((u_int64_t)(entry)) ^ silly_xor_key);
+
+  return entry;
 }
 
 #else
@@ -240,6 +261,10 @@ void __softboundcets_init(void) {
 
   __softboundcets_trie_primary_table = (__softboundcets_metadata_t **)mmap(
       0, length_trie, PROT_READ | PROT_WRITE, SOFTBOUNDCETS_MMAP_FLAGS, -1, 0);
+
+#ifdef USE_AES
+  initialize_aes_obj();
+#endif
 
   for (int i = 0; i < __SOFTBOUNDCETS_TRIE_PRIMARY_TABLE_ENTRIES; i++) {
     __softboundcets_trie_primary_table[i] =

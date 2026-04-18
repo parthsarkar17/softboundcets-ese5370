@@ -1,4 +1,5 @@
 set(SOFTBOUNDCETS_SOURCES
+  AES_C.c
 	softboundcets.cpp
 	softboundcets-wrappers.cpp
 )
