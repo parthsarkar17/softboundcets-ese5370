@@ -145,27 +145,15 @@ void initialize_aes_obj() {
 }
 
 __softboundcets_metadata_t *
-decrypt_and_return_pointer2(fat_softboundcets_metadata_t *fat_struct_addr) {
+decrypt_and_return_pointer(fat_softboundcets_metadata_t *fat_struct_addr) {
   unsigned char *decryption_output;
   unsigned char encrypted_fat_data[16];
   fat_softboundcets_metadata_t decrypted_fat_data;
   memcpy(encrypted_fat_data, fat_struct_addr,
          sizeof(fat_softboundcets_metadata_t));
 
-  // printf("before decryption\n");
-  // for (int i = 0; i < 16; i++) {
-  //   printf("%x, ", *(encrypted_fat_data + i));
-  // }
-  // printf("\n");
-
   decryption_output = DecryptECB(aes_obj, encrypted_fat_data,
                                  sizeof(fat_softboundcets_metadata_t), aes_key);
-
-  // printf("after decryption\n");
-  // for (int i = 0; i < 16; i++) {
-  //   printf("%x, ", *(decryption_output + i));
-  // }
-  // printf("\n");
 
   memcpy(&decrypted_fat_data, decryption_output,
          sizeof(fat_softboundcets_metadata_t));
@@ -174,7 +162,7 @@ decrypt_and_return_pointer2(fat_softboundcets_metadata_t *fat_struct_addr) {
   return decrypted_fat_data.real_ptr;
 }
 
-void encrypt2(fat_softboundcets_metadata_t *fat_struct_addr,
+void encrypt(fat_softboundcets_metadata_t *fat_struct_addr,
               __softboundcets_metadata_t *new_ptr) {
 
   unsigned char *encryption_output;
@@ -191,42 +179,6 @@ void encrypt2(fat_softboundcets_metadata_t *fat_struct_addr,
   memcpy(fat_struct_addr, encryption_output,
          sizeof(fat_softboundcets_metadata_t));
   free(encryption_output);
-}
-
-__softboundcets_metadata_t *
-decrypt_and_return_pointer(fat_softboundcets_metadata_t *fat_struct_addr) {
-  return fat_struct_addr->real_ptr;
-}
-
-void encrypt(fat_softboundcets_metadata_t *fat_struct_addr,
-             __softboundcets_metadata_t *new_ptr) {
-  fat_struct_addr->real_ptr = new_ptr;
-}
-
-void test_encrypt_decrypt_aes() {
-  // __softboundcets_metadata_t *dummy_metadata = &dummy_invalid_metadata;
-  // fat_softboundcets_metadata_t dummy_fat_metadata;
-  // dummy_fat_metadata.real_ptr = NULL;
-  // dummy_fat_metadata.dummy_ptr = NULL;
-
-  // printf("Before encryption, we have dummy_metadata = %p\n", dummy_metadata);
-  // printf("before encryption\n");
-  // unsigned char *dummy_fat_metadata_alias =
-  //     (unsigned char *)&dummy_fat_metadata;
-  // for (int i = 0; i < 16; i++) {
-  //   printf("%x, ", *(dummy_fat_metadata_alias + i));
-  // }
-  // printf("\n");
-
-  // encrypt2(&dummy_fat_metadata, dummy_metadata);
-  // printf("after encryption\n");
-  // for (int i = 0; i < 16; i++) {
-  //   printf("%x, ", *(dummy_fat_metadata_alias + i));
-  // }
-
-  // printf("\n");
-  // __softboundcets_metadata_t *dummy_metadata_alias =
-  //     decrypt_and_return_pointer2(&dummy_fat_metadata);
 }
 
 // --------------------------------------------------------
@@ -305,8 +257,6 @@ void __softboundcets_init(void) {
       0, length_trie, PROT_READ | PROT_WRITE, SOFTBOUNDCETS_MMAP_FLAGS, -1, 0);
 
   initialize_aes_obj();
-
-  test_encrypt_decrypt_aes();
 
   for (int i = 0; i < __SOFTBOUNDCETS_TRIE_PRIMARY_TABLE_ENTRIES; i++) {
     encrypt(&__softboundcets_trie_primary_table[i], NULL);
