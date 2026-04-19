@@ -1,6 +1,7 @@
 \documentclass{article}
 \usepackage{xfrac, amssymb, amsmath, gensymb, graphicx, amsthm, mathtools}
 \usepackage{semantic}
+\usepackage{hyperref}
 \usepackage[a4paper, total={6in, 8in}]{geometry}
 \setlength{\parindent}{0pt}
 
@@ -52,11 +53,164 @@
     hand-in-hand with provably correct, classical static analysis methods,
     so the security-performance tradeoff can continue to be bridged.
 
-    \bigbreak{}
+\section{The Attack}
 
-    
+    In order to motivate the encryption of the metadata table that is central 
+    to Softbound+CETS' memory safety guarantees, my project includes a simple 
+    attack embedded in an executable linked with one compilation unit 
+    unprotected by Softbound+CETS instrumentation. At a high level, given
+    knowledge about the location in virtual memory of the metadata table,
+    the unprotected module can directly modify select entries of the table
+    in order to escalate the privilege of a specific pointer. In my case,
+    I have demonstrated this fact by modifying the table to allow, within the
+    protected module, an offset from a stack allocated \verb|Buffer A| to 
+    modify a disjoint section of the stack owned by \verb|Buffer B|. 
+    While this is a simple example, I think it's clear that this is a
+    limitation to the adoption of SoftBound+CETS instrumentation in legacy 
+    systems. Why should ``protected'' modules incur considerable overheads when 
+    there is no guarantee that data cannot be corrupted by pointers that live in
+    and never even leave the protected module?
 
 
+
+    \subsection{Relevant Background}
+
+        First, in order to understand the way the attack was mounted, it is
+        important to specify the mechamism that SoftBound+CETS uses to
+        propagate and update metadata associated with each pointer.
+
+        \subsubsection{Pointer \& Metadata Origination}
+
+            C semantics dictates that pointers can originate in multiple,
+            legitimate ways. Most straightforwardly, the compiler can allocate
+            variable, fixed-size buffers, and other statically-sized objects on
+            the function's stack frame. Pointer variables that point to
+            stack-allocated memory have a base, bound, and size that is
+            determined at compile time. This metadata is inserted in-line with
+            the pointer variable declaration. 
+            
+            \bigbreak{}
+
+            In particular, here is my mental model of stack variable pointer
+            transformations. With the following code:
+
+            \begin{verbatim}
+      struct student {
+        int age;
+        int id;
+      };
+
+      int main()
+      {
+        struct student parth;
+        parth.age = 23;
+      }
+            \end{verbatim}
+
+            I expect to see LLVM intermediate representation code to the
+            following effect:
+
+            \begin{verbatim}
+      ...
+      %1 = alloca %struct.student, align 4
+      %1_age = getelementptr inbounds %struct.student, ptr %1, i32 0, i32 0
+
+      // Softbound+CETS inserted
+      %1_base = getelementptr inbounds %struct.student, ptr %1, i32 0, i32 0
+      %1_bound = getelementptr inbounds %struct.student, ptr %1, i32 0, i32 2
+      %1_size = i32 4; // each field of `student' holds 4 bytes
+      ...
+            \end{verbatim}
+
+            Here, the \verb|getelementptr| (GEP) instruction is just computing a
+            pointer offset from some base. Then, at the point where the variable 
+            \verb|%1_age| is finally dereferenced, a branch is also inserted to 
+            verify the condition \verb|%1_base <= %1_age + %1_size <= %1_bound|.
+            In this example (where \verb|fp| stands for ``frame pointer''), the 
+            check simplifies to:
+            \[\verb|fp + 0 <= fp + 0 + 4 <= fp + 8|\]
+
+        \subsubsection{Pointer Propagation}
+
+            An interesting case to deal with is when programmers need to store
+            pointer variables themselves into memory (as a concrete example,
+            the \verb|task_struct| in the Linux kernel holds a pointer to
+            the \verb|pid| struct in its field \verb|thread_pid|).
+
+            \bigbreak{}
+
+            Here, SoftBound+CETS instrumentation is required to make a
+            \textit{metadata table entry} for the pointer value being stored to
+            memory. The metadata cannot be reliably inlined because the pointer
+            value will most likely escape the scope that any inlined metadata
+            might belong to.
+
+            \bigbreak{}
+
+            In particular, the metadata table maps each pointer stored into
+            memory to a struct with $\verb|base|$ and $\verb|bound|$ values.
+            The mapping uses a two-level table in order to balance quick
+            look-up and modification times with reasonable memory usage.
+            Specifically, the container I used to mount the attack used 48
+            bit pointers. The following diagram shows the way a pointer value
+            is used to find its mapped metadata entry:
+
+            % INSERT IMAGE HERE
+            \bigbreak{}
+
+        \subsection{Attack Details}
+
+            My attack employs an unprotected module to overwrite a key metadata
+            table entry to escalate the privilege afforded to a pointer that lives
+            in the SoftBound+CETS instrumented subset of the executable.
+            This is not the only way to modify a pointer's metadata. For example,
+            even the ``inlined'' metadata presented in 2.1.1 will exist in the
+            memory if $\verb|main|$ calls a subroutine. A malicious subroutine
+            might write beyond its stack frame, and modify the stack location
+            pertaining to the \verb|%1_bound| variable in its parent's stack
+            frame.
+
+            \bigbreak{}
+
+            However, my attack exploits the metadata table because I wanted to
+            motivate the encryption of the metadata table as an initial,
+            low-complexity encryption target (and get a rough understanding of
+            overhead). It is possible (and necessary, for full protection) 
+            to encrypt metadata that lives on the stack, but that
+            was a more involved process that will be left to future work.
+
+            \bigbreak{}
+
+            In my attack, I initialize two adjacent arrays, \verb|array1| and
+            \verb|array2|, and I store the pointer to  \verb|array1|'s first
+            element is stored to memory.
+
+            \begin{verbatim}
+      /* main.c (protected) */
+
+      // these arrays live next to each other on the stack
+      int array1[] = {1, 2, 3, 4};
+      int array2[] = {5, 6, 7, 8};
+
+      // ensure pointer `array1' has an entry in the metadata table by
+      // storing the pointer to a location in memory (i.e. not just inlined)
+      int *array1_ptr[] = {array1};
+            \end{verbatim}
+
+            Next, in my unprotected module, having turned off ASLR, I
+            hard-coded the address of the first-level metadata table.
+            I then descended the two-level table, found the entry, and
+            widened my privilege by 4 bytes in either direction.
+
+            \bigbreak{}
+
+            In my protected module, I then used my escalated privilege to write
+            beyond the bounds of \verb|array1|, and influence \verb|array2| (
+            the `37' seen in the image below). The directory with the code
+            can be accessed here: \url{https://github.com/parthsarkar17/softboundcets-ese5370/tree/main/attack}.
+
+
+            
 \end{document}
 
 
