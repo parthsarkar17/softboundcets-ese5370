@@ -3405,8 +3405,8 @@ void SoftBoundCETSPass::addSpatialChecks(
           auto size = spa_alv.getFPOffsetSize();
 
           if ((base <= ptr) && (ptr + size <= bound)) {
-            // llvm::outs() << "elided load/store instruction for: "
-            //              << ptr_operand_instr << " with form "
+            // llvm::outs() << "elided branch for instruction at "
+            //              << ptr_operand_instr << " which looks like "
             //              << *ptr_operand_instr << " with ALV: " << spa_alv
             //              << "\n";
             return;

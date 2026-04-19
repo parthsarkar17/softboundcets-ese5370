@@ -57,7 +57,10 @@
 #if !defined(__FreeBSD__)
 #include <execinfo.h>
 #endif
+
 #include "softboundcets.h"
+
+#define USE_AES
 
 __softboundcets_metadata_t **__softboundcets_trie_primary_table;
 
@@ -120,6 +123,73 @@ void softboundcets_init_ctype(void) {
 
 #endif // End of __linux__
 }
+
+// ---------------------------------------------------------
+//              encryption globals & functions
+// ---------------------------------------------------------
+
+#ifdef USE_AES
+
+extern "C" {
+#include "AES_C.h"
+}
+
+unsigned char plain[16];
+unsigned char key[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                       0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
+unsigned int plain_len = 16 * sizeof(unsigned char);
+struct aes *aes_obj;
+unsigned initialized_aes_obj = 0;
+
+void initialize_aes_obj() {
+  if (!initialized_aes_obj) {
+    aes_obj = from_keylength(plain_len);
+    initialized_aes_obj = 1;
+  }
+}
+
+__softboundcets_metadata_t *
+encrypt_primary_table_entry(__softboundcets_metadata_t *entry, int i) {
+
+  // since encryption happens on every 16B block, and each pointer is 8B,
+  // we need to encrypt two pointers together. hence, we need to decrypt the
+  // entire 16B word in order to insert the new
+  void *aligned;
+  if (i % 2 == 0) {
+    aligned = (void *)entry;
+  } else {
+    aligned = ((void *)entry) - sizeof(__softboundcets_metadata_t);
+  }
+
+  unsigned char *encypted = EncryptECB(aes_obj, plain, plain_len, key);
+  return entry;
+}
+
+__softboundcets_metadata_t *
+decrypt_primary_table_entry(__softboundcets_metadata_t *entry, int i) {
+
+  return entry;
+}
+
+#else
+
+u_int64_t silly_xor_key = 0xdeadbeef;
+
+__attribute__((always_inline)) __softboundcets_metadata_t *
+encrypt_primary_table_entry(__softboundcets_metadata_t *entry, int i) {
+  return (__softboundcets_metadata_t *)(((u_int64_t)(entry)) ^ silly_xor_key);
+}
+
+__attribute__((always_inline)) __softboundcets_metadata_t *
+decrypt_primary_table_entry(__softboundcets_metadata_t *entry, int i) {
+  return (__softboundcets_metadata_t *)(((u_int64_t)(entry)) ^ silly_xor_key);
+}
+
+#endif
+
+// --------------------------------------------------------
+//                        end
+// --------------------------------------------------------
 
 void __softboundcets_init(void) {
   if (softboundcets_initialized != 0) {
@@ -194,6 +264,16 @@ void __softboundcets_init(void) {
 
   __softboundcets_trie_primary_table = (__softboundcets_metadata_t **)mmap(
       0, length_trie, PROT_READ | PROT_WRITE, SOFTBOUNDCETS_MMAP_FLAGS, -1, 0);
+
+#ifdef USE_AES
+  initialize_aes_obj();
+#endif
+
+  for (int i = 0; i < __SOFTBOUNDCETS_TRIE_PRIMARY_TABLE_ENTRIES; i++) {
+    __softboundcets_trie_primary_table[i] =
+        encrypt_primary_table_entry(__softboundcets_trie_primary_table[i], i);
+  }
+
   assert(__softboundcets_trie_primary_table != (void *)-1);
 
   int *temp = (int *)malloc(1);
@@ -595,19 +675,23 @@ void __softboundcets_copy_metadata(void *dest, void *from, size_t size) {
       size_t dest_secondary_index = (((dest_sizet + index) >> 3) & 0x3fffff);
       size_t from_secondary_index = (((from_sizet + index) >> 3) & 0x3fffff);
 
-      __softboundcets_metadata_t *temp_from_strie =
-          __softboundcets_trie_primary_table[temp_from_pindex];
+      __softboundcets_metadata_t *temp_from_strie = decrypt_primary_table_entry(
+          __softboundcets_trie_primary_table[temp_from_pindex],
+          (int)temp_from_pindex);
 
       if (temp_from_strie == NULL) {
         temp_from_strie = __softboundcets_trie_allocate();
-        __softboundcets_trie_primary_table[temp_from_pindex] = temp_from_strie;
+        __softboundcets_trie_primary_table[temp_from_pindex] =
+            encrypt_primary_table_entry(temp_from_strie, (int)temp_from_pindex);
       }
-      __softboundcets_metadata_t *temp_to_strie =
-          __softboundcets_trie_primary_table[temp_to_pindex];
+      __softboundcets_metadata_t *temp_to_strie = decrypt_primary_table_entry(
+          __softboundcets_trie_primary_table[temp_to_pindex],
+          (int)temp_to_pindex);
 
       if (temp_to_strie == NULL) {
         temp_to_strie = __softboundcets_trie_allocate();
-        __softboundcets_trie_primary_table[temp_to_pindex] = temp_to_strie;
+        __softboundcets_trie_primary_table[temp_to_pindex] =
+            encrypt_primary_table_entry(temp_to_strie, (int)temp_to_pindex);
       }
 
       void *dest_entry_ptr = &temp_to_strie[dest_secondary_index];
@@ -624,10 +708,12 @@ void __softboundcets_copy_metadata(void *dest, void *from, size_t size) {
     return;
   }
 
-  trie_secondary_table_dest_begin =
-      __softboundcets_trie_primary_table[dest_primary_index_begin];
-  trie_secondary_table_from_begin =
-      __softboundcets_trie_primary_table[from_primary_index_begin];
+  trie_secondary_table_dest_begin = decrypt_primary_table_entry(
+      __softboundcets_trie_primary_table[dest_primary_index_begin],
+      (int)dest_primary_index_begin);
+  trie_secondary_table_from_begin = decrypt_primary_table_entry(
+      __softboundcets_trie_primary_table[from_primary_index_begin],
+      (int)from_primary_index_begin);
 
   if (trie_secondary_table_from_begin == NULL)
     return;
@@ -635,7 +721,8 @@ void __softboundcets_copy_metadata(void *dest, void *from, size_t size) {
   if (trie_secondary_table_dest_begin == NULL) {
     trie_secondary_table_dest_begin = __softboundcets_trie_allocate();
     __softboundcets_trie_primary_table[dest_primary_index_begin] =
-        trie_secondary_table_dest_begin;
+        encrypt_primary_table_entry(trie_secondary_table_dest_begin,
+                                    (int)dest_primary_index_begin);
   }
 
   size_t dest_secondary_index = ((dest_ptr >> 3) & 0x3fffff);
@@ -973,13 +1060,15 @@ __RT_VISIBILITY void __softboundcets_metadata_store(void *addr_of_ptr,
   __softboundcets_metadata_t *trie_secondary_table;
 
   primary_index = (ptr >> 25);
-  trie_secondary_table = __softboundcets_trie_primary_table[primary_index];
+  trie_secondary_table = decrypt_primary_table_entry(
+      __softboundcets_trie_primary_table[primary_index], (int)primary_index);
   // printf("primary table located at : %p",
   // __softboundcets_trie_primary_table);
 
   if (UNLIKELY(trie_secondary_table == NULL)) {
     trie_secondary_table = __softboundcets_trie_allocate();
-    __softboundcets_trie_primary_table[primary_index] = trie_secondary_table;
+    __softboundcets_trie_primary_table[primary_index] =
+        encrypt_primary_table_entry(trie_secondary_table, primary_index);
   }
   assert(trie_secondary_table != NULL);
 
@@ -1026,7 +1115,8 @@ __softboundcets_shadowspace_metadata_ptr(void *address) {
   size_t ptr = (size_t)address;
   __softboundcets_metadata_t *trie_secondary_table;
   size_t primary_index = (ptr >> 25);
-  trie_secondary_table = __softboundcets_trie_primary_table[primary_index];
+  trie_secondary_table = decrypt_primary_table_entry(
+      __softboundcets_trie_primary_table[primary_index], (int)primary_index);
 
   size_t secondary_index = ((ptr >> 3) & 0x3fffff);
   __softboundcets_metadata_t *entry_ptr =
@@ -1043,13 +1133,15 @@ __softboundcets_shadowspace_metadata_ptr_create_secondary_tries(void *address) {
   size_t ptr = (size_t)address;
   __softboundcets_metadata_t *trie_secondary_table;
   size_t primary_index = (ptr >> 25);
-  trie_secondary_table = __softboundcets_trie_primary_table[primary_index];
+  trie_secondary_table = decrypt_primary_table_entry(
+      __softboundcets_trie_primary_table[primary_index], (int)primary_index);
 
   /* unnecessary control flow causes performance overhead */
   /* this can cause segfaults with uninitialized pointer reads from memory */
   if (UNLIKELY(trie_secondary_table == NULL)) {
     trie_secondary_table = __softboundcets_trie_allocate();
-    __softboundcets_trie_primary_table[primary_index] = trie_secondary_table;
+    __softboundcets_trie_primary_table[primary_index] =
+        encrypt_primary_table_entry(trie_secondary_table, (int)primary_index);
   }
 
   size_t secondary_index = ((ptr >> 3) & 0x3fffff);
@@ -1326,11 +1418,14 @@ __softboundcets_allocation_secondary_trie_allocate_range(void *initial_ptr,
   for (; start_primary_index <= end_primary_index; start_primary_index++) {
 
     __softboundcets_metadata_t *trie_secondary_table =
-        __softboundcets_trie_primary_table[start_primary_index];
+        decrypt_primary_table_entry(
+            __softboundcets_trie_primary_table[start_primary_index],
+            (int)start_primary_index);
     if (trie_secondary_table == NULL) {
       trie_secondary_table = __softboundcets_trie_allocate();
       __softboundcets_trie_primary_table[start_primary_index] =
-          trie_secondary_table;
+          encrypt_primary_table_entry(trie_secondary_table,
+                                      (int)start_primary_index);
     }
   }
 }
@@ -1348,25 +1443,31 @@ __softboundcets_allocation_secondary_trie_allocate(void *addr_of_ptr) {
   //  size_t secondary_index = ((ptr >> 3) & 0x3fffff);
 
   __softboundcets_metadata_t *trie_secondary_table =
-      __softboundcets_trie_primary_table[primary_index];
+      decrypt_primary_table_entry(
+          __softboundcets_trie_primary_table[primary_index], primary_index);
 
   if (trie_secondary_table == NULL) {
     trie_secondary_table = __softboundcets_trie_allocate();
-    __softboundcets_trie_primary_table[primary_index] = trie_secondary_table;
+    __softboundcets_trie_primary_table[primary_index] =
+        encrypt_primary_table_entry(trie_secondary_table, primary_index);
   }
 
   __softboundcets_metadata_t *trie_secondary_table_second_entry =
-      __softboundcets_trie_primary_table[primary_index + 1];
+      decrypt_primary_table_entry(
+          __softboundcets_trie_primary_table[primary_index + 1],
+          primary_index + 1);
 
   if (trie_secondary_table_second_entry == NULL) {
     __softboundcets_trie_primary_table[primary_index + 1] =
-        __softboundcets_trie_allocate();
+        encrypt_primary_table_entry(__softboundcets_trie_allocate(),
+                                    primary_index + 1);
   }
 
   if (primary_index != 0 &&
       (__softboundcets_trie_primary_table[primary_index - 1] == NULL)) {
     __softboundcets_trie_primary_table[primary_index - 1] =
-        __softboundcets_trie_allocate();
+        encrypt_primary_table_entry(__softboundcets_trie_allocate(),
+                                    primary_index - 1);
   }
 
   return;

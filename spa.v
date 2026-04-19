@@ -33,7 +33,6 @@ Inductive leq : alv -> alv -> Prop :=
   | all_leq_top    :   forall a : alv,   leq a top
   | ofst_leq_ofst  :   forall ba p bo s1 s2 : nat, s1 <= s2 -> leq (fpoffset ba p bo s1) (fpoffset ba p bo s2).
   
-  
 Definition join (a1 a2 : alv) : alv :=
   match a1 with
   | top => top
@@ -58,16 +57,10 @@ Proof.
   replace (ptr =? ptr0) with (ptr0 =? ptr).
   replace (bound =? bound0) with (bound0 =? bound).
   destruct ((base0 =? base) && (ptr0 =? ptr) && (bound0 =? bound)) eqn:B.
-  - destruct (base0 =? base) eqn:B1;
-    destruct (ptr0 =? ptr) eqn:B2;
-    destruct (bound0 =? bound) eqn:B3; try discriminate.
-    + apply Nat.eqb_eq in B1.
-      apply Nat.eqb_eq in B2.
-      apply Nat.eqb_eq in B3.
-      rewrite B1. rewrite B2. rewrite B3.
-      replace (max size size0) with (max size0 size).
-      { reflexivity. }
-      { apply Nat.max_comm. }
+  -  rewrite !Bool.andb_true_iff in B.
+     rewrite !Nat.eqb_eq in B.
+     decompose [and] B. rewrite H0. rewrite H1. rewrite H2.
+     rewrite Nat.max_comm. reflexivity.
   - reflexivity.
   - apply eqb_sym.
   - apply eqb_sym.
