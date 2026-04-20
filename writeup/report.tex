@@ -155,7 +155,13 @@
             bit pointers. The following diagram shows the way a pointer value
             is used to find its mapped metadata entry:
 
-            % INSERT IMAGE HERE
+            \begin{figure}[h]
+                \centering
+                \includegraphics[width=0.5\textwidth]{/Users/parthsarkar/Desktop/metadata_table.png}
+                \caption{The Two-Level Lookup Table Structure}
+                % \label{fig:mesh1}
+            \end{figure}
+
             \bigbreak{}
 
         \subsection{Attack Details}
@@ -205,12 +211,194 @@
             \bigbreak{}
 
             In my protected module, I then used my escalated privilege to write
-            beyond the bounds of \verb|array1|, and influence \verb|array2| (
-            the `37' seen in the image below). The directory with the code
-            can be accessed here: \url{https://github.com/parthsarkar17/softboundcets-ese5370/tree/main/attack}.
+            beyond the bounds of \verb|array1|, and influence \verb|array2|.
+            \begin{verbatim}
+      /* main.c (protected) */
 
 
+      int *array1_alias = array1_ptr[0];
+      *(array1_alias - 1) = RANDOM_INTEGER;
+      *(array1_alias + 4) = RANDOM_INTEGER;
+            \end{verbatim}
+            We can see the change from the stores above in the image below
+            (\verb|RANDOM_INTEGER = 37|). The directory with the code
+            can be accessed here: \newline\url{https://github.com/parthsarkar17/softboundcets-ese5370/tree/main/attack}.
+
+\section{Encryption}
+
+    As previously mentioned, my goal with encrypting the table was to prevent
+    illegal modification of any table-stored metadata entries, which was the
+    mechanism I used to mount the attack detailed above. Importantly, 
+    encryption does not prevent denial of service; an attacker might overwrite
+    legitimate, encrypted data with nonsense bytes that halt the program when
+    later decrypted and used. However, the main goal was to prevent the
+    targeted escalation of privilege I demonstrated above.
+
+    \bigbreak{}
+
+    Based on the two-level metadata table structure introduced in 2.1.2,
+    there are several candidates for encryption. We can encrypt the contents
+    of the first-level table (i.e. pointers to the second-level tables) or
+    the contents of the second-level tables (i.e. the metadata themselves). 
+    In this project, I elect to only encrypt the first-level table.
+    I thought it was most important for a malicious program to not be able to
+    access the metadata entry \textit{at all}, compared to being able to access
+    it and not be able to use or modify it.
+
+    \bigbreak{}
+    
+    Next, I will introduce and evaluate my two encryption methods on the 
+    metadata table.
+
+    \subsection{Exclusive OR (XOR) Encrypted Table}
+    
+        The XOR (\verb|^|) operator can be used as a basic encryption method. For a
+        bit \verb|b| and a one-bit key \verb|k|, the operator has the property
+        that \verb|b ^ k ^ k = b|. Applied bitwise to a 64-bit value, a 64-bit
+        key can provide cheap (i.e. one cycle ALU operation), symmetric 
+        encryption on sensitive data.
+
+        \bigbreak{}
+
+        My XOR encryption scheme works as follows. First, I hard-coded a key 
+        \verb|K| in the Softbound+CETS runtime library. On initialization of
+        the first-level metadata table, I XOR each \verb|NULL| pointer entry
+        with \verb|K|. Then, on every subsequent write and read from the table,
+        I invoke functions that simply XOR the data with \verb|K|. Since these functions only perform the
+        XOR, I prompted the compiler to inline these calls. The key and functions
+        I inserted are available \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/cb8179270000b386616802f150f010230129f169/llvm-project/compiler-rt/lib/softboundcets/softboundcets.cpp#L176}{here}.
+
+        \bigbreak{}
+
+        While I simply hard-coded \verb|K| to some raw 64-bit value here, it 
+        is obviously important to generate a random value on each process
+        initialization (in fact, Linux has a system call to generate a secure
+        random number). Broadly, both my encryption efforts were focused on
+        benchmarking performance, and the hard-coded value suffices here.
+
+    \subsection{AES Encrypted Table}
+    
+        As a more serious form of protection, I then used AES to encrypt the pointers 
+        in the first-level metadata table. At a high level, AES is a symmetric encryption
+        algorithm that encrypts a 16 byte block in 10 rounds, with a 128-bit key.
+        The encryption procedure begins by expanding the key into 11 distinct 128-bit
+        keys, one for each round and one additional. Then, each of the rounds
+        applies an obfuscating function to the \textit{state matrix} that initially encodes 
+        the plaintext. The resulting ciphertext is a highly secure, and it serves
+        as the gold standard for my effort to encrypt the metadata table.
+
+        \bigbreak{}
+
+        Because AES was more strict with its data format than the simple XOR above, I had to modify
+        the first-level metadata table to store 16-byte blocks, instead of the 8-byte
+        pointers it stored before. As such, I changed the first-level
+        table from holding pointers to holding a \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/9f1638e82fdab76a96012aed4c80b0a509b79c52/llvm-project/compiler-rt/lib/softboundcets/softboundcets.h#L109}{fat pointer struct},
+        with a size of 16-bytes.
+        
+        \bigbreak{}
+
+        Given more time, I would have liked to actually implement the AES
+        encryption algorithm myself. Instead, I found a commonly-used, somewhat
+        optimized \href{https://github.com/SergeyBel/AES}{C++ AES repository}, 
+        and I modified it to link correctly with the Softbound+CETS C runtime 
+        library. My modifications to the runtime using the AES library are 
+        available \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/9f1638e82fdab76a96012aed4c80b0a509b79c52/llvm-project/compiler-rt/lib/softboundcets/softboundcets.cpp#L125}{here}.
+        
+
+    \subsection{Results \& Evaluation}
+
+        I evaluate my implementation with respect to three metrics: memory
+        overhead, concrete performance overhead, and security.
+
+        \bigbreak{}
+
+        \subsubsection{Memory Overhead}
+
+            As an initialization step, Softbound+CETS sets up the first-level
+            metadata table with \verb|NULL| entries. As shown in Figure 1,
+            the first-level table must be prepared to map bits \verb|[47:25]|
+            of a 48-bit pointer, for a total of 23 bits. Since each entry
+            holds either an 8-byte \verb|NULL| value or an 8-byte pointer to the 
+            corresponding second-level table, this first-level table occupies
+            a total of $2^{23} \cdot 8 = 67\text{ MB}$ by default. This overhead
+            does not change for the XOR implementation. However, as mentioned in
+            section 3.2, I needed to expand the each pointer entry in the
+            first-level table to include 8-byte padding, in order to accomodate
+            AES's 16-byte plaintext requirement. Therefore, my AES encryption
+            method begins \textit{every} process with a total of 
+            $2 \cdot 2^{23} \cdot 8 = 134\text{ MB}$ of overhead by default.
+
+        \subsubsection{Performance Overhead}
+
+            While the overhead required by AES encryption over standard
+            Softbound+CETS is large, I was expecting an even larger overhead
+            when it came to performance.
+
+            \bigbreak{}
+
+            The benchmark I used was the \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/aes-encryption/ansibench/linpack/src/linpack.c}{LINPACK}
+            linear system solver. This benchmark computes the LU factorization
+            of a user-defined matrix $A$ using Gaussian elimination, and then solves
+            the linear system $Ax = b$ using this factorization. While my benchmark
+            is not the diverse and varied set a real benchmark suite should
+            aim to be, I did indeed discover a noticeable AES performance overhead
+            for this benchmark. The following graph plots the raw time
+            taken to factor and solve with an $n=1000$ square matrix, for
+            baseline \verb|clang| (i.e. no Softbound+CETS), followed by my 
+            XOR and AES encrypted versions of Softbound+CETS. After a warmup
+            period of 3 runs, I captured 5 executions of 16 iterations each,
+            and took their average and standard deviation.
+
+            \begin{figure}[h]
+                \centering
+                \includegraphics[width=1\textwidth]{/Users/parthsarkar/Desktop/encryption.png}
+                \caption{Time vs. Runtime Encrypted Metadata Methods (O3, iter=16)}
+            \end{figure}
+
+            The AES implementation took 12.006 seconds on average, the
+            XOR implementation took an average of 11.708 seconds, and the 
+            unprotected \verb|clang| execution took merely a 0.69 second average.
+            For this benchmark, AES has only a 2.54\% overhead relative to the
+            XOR implementation. While this is exciting information, I have to
+            acknowledge the following:
+
+            \begin{itemize}
+              \item First, I excluded the initial time it took to encrypt the
+              first-level metadata table. Since this was an upfront, non-recurring
+              cost, I considered the overhead to be sufficiently amortized over the course of the program.
+              \item Second, this small overhead might be a limiation of the benchmark itself.
+              It is possible that the number of pointers stored to memory in LINPACK
+              is too small, and not representative of the ``average'' workload.
+              Given more time, I would have liked to retry this experiment with a
+              more representative suite.
+            \end{itemize}
+
+        \subsubsection{Security Guarantees}
+
+            The XOR and AES implementations both succeed in thwarting the attack
+            I introduced in Section 2. My attempt to access the second-level
+            table by indexing into the first-level table was stopped by each
+            encryption mechanism, and resulted in a SegFault.
+
+            \bigbreak{}
             
+            However, while the XOR implementation succeeded in halting the attack,
+            has a much smaller memory footprint, and features encryption that 
+            requires only a one-cycle operation, it is
+            also true that it offers quite weak encryption. For example, all an attacker
+            must do to uncover the key is determine a mapping in the first-level
+            table that \textit{must} be \verb|NULL (= 64'b0)|. Then, after observing the 
+            corresponding encrypted first-level table entry, it is trivial to 
+            deduce the key.
+
+            \bigbreak{}
+
+            AES, however, is much more secure. As we have seen in class, its
+            main attack vectors are side-channel (e.g. power) leakages to reveal
+            keys at specific rounds. If given more time, I would have liked to
+            extend AES encryption to cover stack-allocated metadata, thus
+            providing complete metadata encryption for Softbound+CETS.
+
 \end{document}
 
 

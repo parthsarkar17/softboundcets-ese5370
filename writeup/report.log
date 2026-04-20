@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2024.1.13)  19 APR 2026 16:39
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2024.1.13)  19 APR 2026 22:54
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -444,23 +444,35 @@ LaTeX Font Info:    Trying to load font information for U+msb on input line 13.
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) [1
 
-{/usr/local/texlive/2023/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2] [3] [4] (./report.aux)
+{/usr/local/texlive/2023/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2]
+</Users/parthsarkar/Desktop/metadata_table.png, id=72, 635.37375pt x 463.7325pt>
+File: /Users/parthsarkar/Desktop/metadata_table.png Graphic file (type png)
+<use /Users/parthsarkar/Desktop/metadata_table.png>
+Package pdftex.def Info: /Users/parthsarkar/Desktop/metadata_table.png  used on input line 160.
+(pdftex.def)             Requested size: 216.81pt x 158.24011pt.
+ [3 </Users/parthsarkar/Desktop/metadata_table.png>] [4] [5]
+</Users/parthsarkar/Desktop/encryption.png, id=94, 1713.40125pt x 999.735pt>
+File: /Users/parthsarkar/Desktop/encryption.png Graphic file (type png)
+<use /Users/parthsarkar/Desktop/encryption.png>
+Package pdftex.def Info: /Users/parthsarkar/Desktop/encryption.png  used on input line 354.
+(pdftex.def)             Requested size: 433.62pt x 252.99933pt.
+ [6 </Users/parthsarkar/Desktop/encryption.png>] [7{/usr/local/texlive/2023/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc}] (./report.aux)
 Package rerunfilecheck Info: File `report.out' has not changed.
-(rerunfilecheck)             Checksum: B240D94C7D963EA71BA49AC8525B05B5;878.
+(rerunfilecheck)             Checksum: 2C68053F3D140BC39E5ACF0D9F269E8D;2024.
  ) 
 Here is how much of TeX's memory you used:
- 11505 strings out of 476025
- 189857 string characters out of 5790017
+ 11543 strings out of 476025
+ 190803 string characters out of 5790017
  1863388 words of memory out of 5000000
- 31765 multiletter control sequences out of 15000+600000
+ 31786 multiletter control sequences out of 15000+600000
  522691 words of font info for 71 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,6n,76p,365b,525s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb>
-Output written on report.pdf (4 pages, 112073 bytes).
+ 75i,6n,76p,376b,525s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb>
+Output written on report.pdf (7 pages, 425060 bytes).
 PDF statistics:
- 88 PDF objects out of 1000 (max. 8388607)
- 67 compressed objects within 1 object stream
- 11 named destinations out of 1000 (max. 500000)
- 49 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 166 PDF objects out of 1000 (max. 8388607)
+ 129 compressed objects within 2 object streams
+ 23 named destinations out of 1000 (max. 500000)
+ 115 words of extra memory for PDF output out of 10000 (max. 10000000)
 
