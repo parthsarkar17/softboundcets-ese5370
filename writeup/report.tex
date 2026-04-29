@@ -2,6 +2,7 @@
 \usepackage{xfrac, amssymb, amsmath, gensymb, graphicx, amsthm, mathtools}
 \usepackage{semantic}
 \usepackage{hyperref}
+\usepackage{float}
 \usepackage[a4paper, total={6in, 8in}]{geometry}
 \setlength{\parindent}{0pt}
 
@@ -67,9 +68,9 @@
     modify a disjoint section of the stack owned by \verb|Buffer B|. 
     While this is a simple example, I think it's clear that this is a
     limitation to the adoption of SoftBound+CETS instrumentation in legacy 
-    systems. Why should ``protected'' modules incur considerable overheads when 
-    there is no guarantee that data cannot be corrupted by pointers that live in
-    and never even leave the protected module?
+    systems. Why should programmers feel justified incurring considerable overheads when 
+    any existing, unprotected module can easily faciliate the privilege escalation
+    of a module that \textit{is} ``protected''?
 
 
 
@@ -107,7 +108,7 @@
       }
             \end{verbatim}
 
-            I expect to see LLVM intermediate representation code to the
+            I expect to see transformed LLVM intermediate representation code to the
             following effect:
 
             \begin{verbatim}
@@ -122,8 +123,10 @@
       ...
             \end{verbatim}
 
-            Here, the \verb|getelementptr| (GEP) instruction is just computing a
-            pointer offset from some base. Then, at the point where the variable 
+            Here, the \verb|alloca| instruction is allocating stack memory for an object
+            with size \verb|%struct.student| and storing the pointer in \verb|%1|. 
+            Then, the \verb|getelementptr| (GEP) instruction is just computing a
+            pointer offset from some base. Finally, at the point where the variable 
             \verb|%1_age| is finally dereferenced, a branch is also inserted to 
             verify the condition \verb|%1_base <= %1_age + %1_size <= %1_bound|.
             In this example (where \verb|fp| stands for ``frame pointer''), the 
@@ -141,7 +144,7 @@
 
             Here, SoftBound+CETS instrumentation is required to make a
             \textit{metadata table entry} for the pointer value being stored to
-            memory. The metadata cannot be reliably inlined because the pointer
+            memory. The metadata cannot be reliably inlined into the function body because the pointer
             value will most likely escape the scope that any inlined metadata
             might belong to.
 
@@ -152,7 +155,7 @@
             The mapping uses a two-level table in order to balance quick
             look-up and modification times with reasonable memory usage.
             Specifically, the container I used to mount the attack used 48
-            bit pointers. The following diagram shows the way a pointer value
+            bit virtual addresses. The following diagram shows the way a pointer value
             is used to find its mapped metadata entry:
 
             \begin{figure}[h]
@@ -170,9 +173,10 @@
             table entry to escalate the privilege afforded to a pointer that lives
             in the SoftBound+CETS instrumented subset of the executable.
             This is not the only way to modify a pointer's metadata. For example,
-            even the ``inlined'' metadata presented in 2.1.1 will exist in the
-            memory if $\verb|main|$ calls a subroutine. A malicious subroutine
-            might write beyond its stack frame, and modify the stack location
+            even the ``inlined'' metadata presented in 2.1.1 will most likely exist in the
+            memory if $\verb|main|$ calls a subroutine (some metadata variables might
+            be pushed to the callee's stack frame). A malicious subroutine
+            might, for example, write beyond its stack frame, and modify the stack location
             pertaining to the \verb|%1_bound| variable in its parent's stack
             frame.
 
@@ -183,7 +187,7 @@
             low-complexity encryption target (and get a rough understanding of
             overhead). It is possible (and necessary, for full protection) 
             to encrypt metadata that lives on the stack, but that
-            was a more involved process that will be left to future work.
+            was a more involved process that I discuss in Section 3.3.
 
             \bigbreak{}
 
@@ -221,7 +225,16 @@
       *(array1_alias + 4) = RANDOM_INTEGER;
             \end{verbatim}
             We can see the change from the stores above in the image below
-            (\verb|RANDOM_INTEGER = 37|). The directory with the code
+            (\verb|RANDOM_INTEGER = 37|). 
+            
+            \begin{figure}[H]
+                \centering
+                \includegraphics[width=0.5\textwidth]{/Users/parthsarkar/Downloads/attack_success.png}
+                \caption{Successful Attack: Escalate Afforded Privilege \& Overwrite Neighboring Buffer}
+                % \label{fig:mesh1}
+            \end{figure}
+            
+            The directory with the code
             can be accessed here: \newline\url{https://github.com/parthsarkar17/softboundcets-ese5370/tree/main/attack}.
 
 \section{Encryption}
@@ -243,7 +256,7 @@
     In this project, I elect to only encrypt the first-level table.
     I thought it was most important for a malicious program to not be able to
     access the metadata entry \textit{at all}, compared to being able to access
-    it and not be able to use or modify it.
+    it and not being able to use or modify it.
 
     \bigbreak{}
     
@@ -274,7 +287,7 @@
         is obviously important to generate a random value on each process
         initialization (in fact, Linux has a system call to generate a secure
         random number). Broadly, both my encryption efforts were focused on
-        benchmarking performance, and the hard-coded value suffices here.
+        benchmarking performance, and the hard-coded value suffices for that purpose.
 
     \subsection{AES Encrypted Table}
     
@@ -336,12 +349,12 @@
 
             \bigbreak{}
 
-            The benchmark I used was the \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/aes-encryption/ansibench/linpack/src/linpack.c}{LINPACK}
+            The first benchmark I used was the \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/aes-encryption/ansibench/linpack/src/linpack.c}{LINPACK}
             linear system solver. This benchmark computes the LU factorization
             of a user-defined matrix $A$ using Gaussian elimination, and then solves
-            the linear system $Ax = b$ using this factorization. While my benchmark
+            the linear system $Ax = b$ using this factorization. While this benchmark
             is not the diverse and varied set a real benchmark suite should
-            aim to be, I did indeed discover a noticeable AES performance overhead
+            aim to be, I did indeed discover some AES performance overhead
             for this benchmark. The following graph plots the raw time
             taken to factor and solve with an $n=1000$ square matrix, for
             baseline \verb|clang| (i.e. no Softbound+CETS), followed by my 
@@ -349,7 +362,7 @@
             period of 3 runs, I captured 5 executions of 16 iterations each,
             and took their average and standard deviation.
 
-            \begin{figure}[h]
+            \begin{figure}[H]
                 \centering
                 \includegraphics[width=1\textwidth]{/Users/parthsarkar/Desktop/encryption.png}
                 \caption{Time vs. Runtime Encrypted Metadata Methods (O3, iter=16)}
@@ -372,6 +385,32 @@
               Given more time, I would have liked to retry this experiment with a
               more representative suite.
             \end{itemize}
+
+        \textbf{Worst Case Program:}  To make some headway on the second bullet point, I decided to create a
+        synethtic ``worst-case'' program: a linked list traversal. Since every
+        store of a pointer to memory requires an encrypted store to the metadata
+        table, any pointer-chasing program would incur a gigantic overhead.
+
+        \bigbreak{}
+
+        \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/main/pointer-chasing/main.c}{My program} allocates a linked list with 100,000 nodes, containing numbers
+        0 to 99,999 respectively. It sums up these values by traversing the list,
+        prints the sum, and then frees the nodes. The entire program has $O(n)$ complexity.
+        The following image shows the raw time taken\footnote{The image
+        shows me running ``normal-pointer-chase'', but this was actually a binary with
+        XOR encryption. I didn't think it was necessary to distinguish
+        between the normal Softbound+CETS and XOR versions because
+        the overhead would be negligible for standard XOR operations (that are inlined, so no stack frame overhead either).} with \verb|-O3|:
+
+            \begin{figure}[H]
+                \centering
+                \includegraphics[width=0.6\textwidth]{/Users/parthsarkar/Downloads/pointer-chase-results.png}
+                \caption{Pointer Chase Performance (XOR vs. AES)}
+            \end{figure}
+
+        Here, the overhead for AES is astronomical. In terms of raw time, we have a
+        $\frac{7.245}{0.129} = 56.16\times$ overhead for AES encryption in our
+        worst-case program. 
 
         \subsubsection{Security Guarantees}
 
@@ -398,6 +437,32 @@
             keys at specific rounds. If given more time, I would have liked to
             extend AES encryption to cover stack-allocated metadata, thus
             providing complete metadata encryption for Softbound+CETS.
+
+        \subsubsection{A Word on Stack Metadata Encryption}
+
+            Initially, my goal for this project was to have end-to-end encryption
+            of all metadata values in memory, making it impossible for a 
+            malicious unprotected module to mount a targeted escalation of 
+            privilege. Then, because every dereference of a pointer to a 
+            stack-allocated 
+            piece of memory might need to decrypt metadata that
+            exists on the stack, I wanted to use the high overhead of encryption
+            and decryption to motivate an LLVM pass that cleverly
+            elides certain dereferences to the stack memory (next section).
+
+            \bigbreak{}
+
+            Unfortunately, stack protection was tricky to nail down. Since the basic
+            LLVM IR is machine agnostic, it is unclear whether a variable will be pushed 
+            to the stack or not; hence, every metadata value would need to be encrypted 
+            before being assigned to a variable. It was ultimately too challenging
+            to deal with all of the edge cases of variable encryption (especially
+            considering how AES requires encryption over 128 bits, not 64) within
+            the time frame. Instead, I decided to move on to the compiler pass, even
+            if I had a weaker motivation than I was hoping for!
+
+\section{Dataflow Optimization: Eliding Stack Dereference Checks}
+            
 
 \end{document}
 
