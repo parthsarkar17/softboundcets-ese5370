@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2024.1.13)  28 APR 2026 22:10
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2024.1.13)  29 APR 2026 00:35
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -460,7 +460,7 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) [1
 
 {/usr/local/texlive/2023/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2]
-</Users/parthsarkar/Desktop/metadata_table.png, id=96, 635.37375pt x 463.7325pt>
+</Users/parthsarkar/Desktop/metadata_table.png, id=100, 635.37375pt x 463.7325pt>
 File: /Users/parthsarkar/Desktop/metadata_table.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/metadata_table.png>
 Package pdftex.def Info: /Users/parthsarkar/Desktop/metadata_table.png  used on input line 164.
@@ -471,7 +471,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.1}) has
                                                   \__shipout_drop_firstpage_...
 l.183 
        </Users/parthsarkar/Desktop/metadata_table.png>]
-</Users/parthsarkar/Downloads/attack_success.png, id=104, 1267.73625pt x 650.43pt>
+</Users/parthsarkar/Downloads/attack_success.png, id=108, 1267.73625pt x 650.43pt>
 File: /Users/parthsarkar/Downloads/attack_success.png Graphic file (type png)
 <use /Users/parthsarkar/Downloads/attack_success.png>
 Package pdftex.def Info: /Users/parthsarkar/Downloads/attack_success.png  used on input line 233.
@@ -482,13 +482,13 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.2}) has
                                                   \__shipout_drop_firstpage_...
 l.240 
        </Users/parthsarkar/Downloads/attack_success.png>] [5]
-</Users/parthsarkar/Desktop/encryption.png, id=121, 1713.40125pt x 999.735pt>
+</Users/parthsarkar/Desktop/encryption.png, id=125, 1713.40125pt x 999.735pt>
 File: /Users/parthsarkar/Desktop/encryption.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/encryption.png>
 Package pdftex.def Info: /Users/parthsarkar/Desktop/encryption.png  used on input line 368.
 (pdftex.def)             Requested size: 433.62pt x 252.99933pt.
  [6]
-</Users/parthsarkar/Downloads/pointer-chase-results.png, id=131, 1103.12125pt x 434.62375pt>
+</Users/parthsarkar/Downloads/pointer-chase-results.png, id=135, 1103.12125pt x 434.62375pt>
 File: /Users/parthsarkar/Downloads/pointer-chase-results.png Graphic file (type png)
 <use /Users/parthsarkar/Downloads/pointer-chase-results.png>
 Package pdftex.def Info: /Users/parthsarkar/Downloads/pointer-chase-results.png  used on input line 408.
@@ -503,23 +503,23 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.4}) has
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.478 
-       </Users/parthsarkar/Downloads/pointer-chase-results.png>] [9] (./report.aux)
+       </Users/parthsarkar/Downloads/pointer-chase-results.png>] [9] [10] [11] (./report.aux)
 Package rerunfilecheck Info: File `report.out' has not changed.
-(rerunfilecheck)             Checksum: F1207EA8D6728EA7EE59FA4FD2A4FB6A;3568.
+(rerunfilecheck)             Checksum: B1D16E42EDB78DA4B02E2AF571B808C3;3849.
  ) 
 Here is how much of TeX's memory you used:
- 11982 strings out of 476025
- 198813 string characters out of 5790017
+ 11986 strings out of 476025
+ 198867 string characters out of 5790017
  1863388 words of memory out of 5000000
- 32201 multiletter control sequences out of 15000+600000
+ 32202 multiletter control sequences out of 15000+600000
  522691 words of font info for 71 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,8n,76p,460b,525s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,8n,76p,460b,584s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb>
-Output written on report.pdf (9 pages, 678841 bytes).
+Output written on report.pdf (11 pages, 687443 bytes).
 PDF statistics:
- 226 PDF objects out of 1000 (max. 8388607)
- 177 compressed objects within 2 object streams
- 36 named destinations out of 1000 (max. 500000)
- 173 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 242 PDF objects out of 1000 (max. 8388607)
+ 191 compressed objects within 2 object streams
+ 39 named destinations out of 1000 (max. 500000)
+ 181 words of extra memory for PDF output out of 10000 (max. 10000000)
 

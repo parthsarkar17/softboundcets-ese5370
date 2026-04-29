@@ -9,7 +9,7 @@
 
 \title{ESE 5370: Final Project Report}
 \author{Parth Sarkar}
-\date{Monday, April 20th, 2026}
+\date{Wednesday, April 29th, 2026}
 \begin{document}
 \maketitle
 
@@ -486,16 +486,16 @@
 
     \bigbreak{}
 
-    At a high level, my optimization proves that type-aware dereferences for constant-offset 
-    pointers into stack memory can be elided. This is valuable for fixed-size
-    arrays and stack-allocated structs, which are relatively common progrmaming patterns.
+    At a high level, my optimization proves that type-aware dereferences of constant-offset 
+    pointers into stack memory can be elided. This is valuable for stack-allocated
+    arrays and structs, which are relatively common progrmaming patterns.
     My analysis shows that checks on these dereferences can be moved from
     being performed at runtime, to instead being performed at compile time.
 
     \bigbreak{}
 
     Specifically, my analysis returns the following information for each variable
-    at each basic block. If the variable is a pointer variable, either we:
+    at each basic block (BB). If the variable is a pointer variable, either we:
     \begin{enumerate}[label=\textbf{\arabic*}]
         \item Cannot say anything useful about the variable
         \item Or, we know \textbf{(A)} the \textit{base}, \textbf{(B)} the \textit{bound}, and the \textbf{(C)} \textit{size} of the object being pointed to
@@ -506,16 +506,136 @@
         Understanding the theory of dataflow analyses was, to me, a critical part
         of my project. Specifically, this analysis did not seem like any of the
         ones that I was previously taught (e.g. reaching definitions, liveness
-        analysis, constant propagation). Instead, it seemed to be an amalgamation
+        analysis, constant propagation). Instead, even though it seemed straightforward, 
+        it felt like an amalgamation
         of interval analysis (i.e. what \textit{range} of values can this pointer
         exist within?), alias analysis (i.e. which memory locations does a pointer
         point to?), and constant propagation. Therefore, I had some real concerns
-        regarding the termination of my analysis and whether I would achieve any
+        regarding the termination of the analysis and whether I would achieve any
         meaningful results.
         
+        \bigbreak{}
+
+        The idea of flow-sensitive analyses is to determine, at every program 
+        point, what information we know about each variable, given that we could
+        have taken any control-flow-graph traversal to get to the current
+        point. In particular, this ``information'' is encoded as a map from
+        variables in the function's scope to elements of a set that encapsulate
+        information we want to record. 
+
+        \bigbreak{}
+        
+        LLVM's intermediate representation is
+        implemented in \textit{single static assignment} (SSA) form. This means a ``variable''
+        is equivalent to (i.e. uniquely identified by) the pointer to the instruction
+        where that variable was defined. Finally, the elements of a set to which
+        each variable is mapped are called \textit{abstract lattice values} (ALVs).
+        
+        \bigbreak{}
+
+        Further, while I actually implemented the analysis at the granularity of
+        basic blocks as defined by LLVM, for theoretical purposes, it is easier
+        to reason about dataflow at the granularity of each instruction. Therefore,
+        dataflow information at ``program point'' \textit{i} refers to the
+        mapping from variables to ALVs just before instruction \textit{i} executes.
+
+        \subsubsection{Lattices \& Relevance to My Optimization}
+
+            For the purposes of dataflow analyses, a \textit{lattice} refers to
+            a set $L$, a partial ordering on the set $\sqsubseteq$, and a 
+            total binary operator $\sqcup$ that computes the least upper bound of
+            two lattice elements (I will call this operator the ``join''
+            operator).
+
+            \bigbreak{}
+
+            Two important elements of the lattice are ``top'' ($\top$) and
+            ``bottom'' ($\perp$). At a given program point, if a variable is
+            mapped to $\top$, then we cannot say anything about that variable.
+            For example, this could mean the variable was a function input,
+            or the variable took on different values along different routes of
+            the CFG up to this point. On the other hand, $\perp$ means ``undefined'';
+            in particular, we can say whatever we find most convenient about that
+            variable.
+
+            \bigbreak{}
+
+            As mentioned in the introduction to Section 4, I either want to be able to
+            map each variable to a ``don't know'' value, \textit{or} to a value representing
+            the base, bound, size, and offset into the object. First, the standard ALV
+            $\top$ adequetely represents the ``don't know'' value. Then,
+            I introduce a new ALV element that I'll call \verb|fpoffset (ba, ptr, bo, sz)| that
+            contains each of the above-mentioned four pieces of information. 
+
+            \bigbreak{}
+            
+            Now, I will informally introduce my relation $\sqsubseteq$ and operator $\sqcup$.
+            For the partial ordering relation, we intuitively want to encode which ALVs 
+            provide more information than others. As mentioned previously, $\perp$ provides
+            the most information; we can assume anything we desire. More realistically, we
+            then have \verb|fpoffset (ba, ptr, bo, sz)|. If a variable is mapped to this element,
+            we strictly know that the variable has value \verb|ptr|, has a type \verb|sz|,
+            and exists within base \verb|ba| and bound \verb|bo|. Finally, since $\top$ gives us
+            no information, we know $\forall x \in L, x \sqsubseteq \top$. Putting these together,
+            we have that:
+            \begin{itemize}
+                \item $\perp \;\; \sqsubseteq \;\; \verb|fpoffset (ba, ptr, bo, sz)|$
+                \item $\verb|fpoffset (ba, ptr, bo, sz)| \;\; \sqsubseteq \;\; \top$
+            \end{itemize}
+
+            Now, given this informal ordering, the ``join'' operator is responsible
+            for making sure that conflicting variable mappings do not provide too
+            much information. So, for example, $\forall x \in L, x \sqcup \top = \top$,
+            and $\perp \sqcup \;\; \verb|fpoffset (ba, ptr, bo, sz)| = \verb|fpoffset (ba, ptr, bo, sz)|$.
 
     \subsection{Rocq Encoding \& Formal Proof of Monotonicity}
 
+            The above informal definitions helped provide an intuition for my analysis
+            throughout the implementation process, but I found the formalization
+            immensely valuable; if I implemented my LLVM pass in accordance with my Rocq implemenation,
+            then I would guarantee termination with useful results.
+
+            \bigbreak{}
+
+            First, I encoded the lattice members precisely as described in 4.1.1:
+
+            \begin{verbatim}
+            Inductive alv : Type :=
+                | top
+                | fpoffset (base ptr bound size: nat)
+                | bottom.
+            \end{verbatim}
+
+            Next, the $\sqsubseteq$ relation is succinct enough to include here,
+            and includes the intuitive definitions from above. One important 
+            addition is the \verb|ofst_leq_ofst| rule. That proposition constructor says
+            that, for the same pointer value, a pointer
+            that references a larger type provides \textit{less} information 
+            than a smaller type. The reason for this is that we want to be able
+            to dereference a pointer as close to its bound as possible; a smaller
+            type \verb|size| gives us more freedom to dereference anywhere between
+            a \verb|base| and \verb|bound - size|.
+
+            \begin{verbatim}
+            Inductive leq : alv -> alv -> Prop :=
+                | bot_leq_all    :   forall a : alv,   leq bottom a
+                | all_leq_top    :   forall a : alv,   leq a top
+                | ofst_leq_ofst  :   forall ba p bo s1 s2 : nat, 
+                    s1 <= s2 -> leq (fpoffset ba p bo s1) (fpoffset ba p bo s2).
+            \end{verbatim}
+
+            Though the $\sqcup$ binary operation is straightforward, I will 
+            defer to the \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/8be2130a53f6cb4e7e283aeb8e46bc1ba478985f/spa.v#L36}{source code}.
+            Finally, given this definition of a lattice, I provided an
+            implemenation for the following specification:
+
+            \begin{verbatim}
+            Theorem join_is_monotonic : forall x y z: alv, 
+                (leq x y -> leq (join x z) (join y z))
+             /\ (leq y z -> leq (join x y) (join x z)).
+            \end{verbatim}
+            
+            
     \subsection{LLVM Implementation Details}
 
     \subsection{Correctness, Results \& Evaluation}
