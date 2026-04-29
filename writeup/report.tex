@@ -70,8 +70,8 @@
     While this is a simple example, I think it's clear that this is a
     limitation to the adoption of SoftBound+CETS instrumentation in legacy 
     systems. Why should programmers feel justified incurring considerable overheads when 
-    any existing, unprotected module can easily faciliate the privilege escalation
-    of a module that \textit{is} ``protected''?
+    any existing, unprotected module can easily faciliate privilege escalation
+    within a module that \textit{is} ``protected''?
 
 
 
@@ -83,7 +83,7 @@
 
         \subsubsection{Pointer \& Metadata Origination}
 
-            C semantics dictates that pointers can originate in multiple,
+            C semantics dictate that pointers can originate in multiple,
             legitimate ways. Most straightforwardly, the compiler can allocate
             variable, fixed-size buffers, and other statically-sized objects on
             the function's stack frame. Pointer variables that point to
@@ -208,10 +208,10 @@
       int *array1_ptr[] = {array1};
             \end{verbatim}
 
-            Next, in my unprotected module, having turned off ASLR, I
+            Next, I call the malicious subroutine in my unprotected module. Within this subroutine, having turned off ASLR, I
             hard-coded the address of the first-level metadata table.
             I then descended the two-level table, found the entry, and
-            widened my privilege by 4 bytes in either direction.
+            widened my privilege by 4 bytes in both directions.
 
             \bigbreak{}
 
@@ -220,6 +220,8 @@
             \begin{verbatim}
       /* main.c (protected) */
 
+      // call malicious subroutine
+      overwrite_metadata_map(array1_ptr, 4);
 
       int *array1_alias = array1_ptr[0];
       *(array1_alias - 1) = RANDOM_INTEGER;
@@ -230,7 +232,7 @@
             
             \begin{figure}[H]
                 \centering
-                \includegraphics[width=0.5\textwidth]{/Users/parthsarkar/Downloads/attack_success.png}
+                \includegraphics[width=0.6\textwidth]{/Users/parthsarkar/Downloads/attack_success.png}
                 \caption{Successful Attack: Escalate Afforded Privilege \& Overwrite Neighboring Buffer}
                 % \label{fig:mesh1}
             \end{figure}
@@ -324,8 +326,6 @@
         I evaluate my implementation with respect to three metrics: memory
         overhead, concrete performance overhead, and security.
 
-        \bigbreak{}
-
         \subsubsection{Memory Overhead}
 
             As an initialization step, Softbound+CETS sets up the first-level
@@ -380,7 +380,7 @@
               \item First, I excluded the initial time it took to encrypt the
               first-level metadata table. Since this was an upfront, non-recurring
               cost, I considered the overhead to be sufficiently amortized over the course of the program.
-              \item Second, this small overhead might be a limiation of the benchmark itself.
+              \item Second, this small overhead might be a limitation of the benchmark itself.
               It is possible that the number of pointers stored to memory in LINPACK
               is too small, and not representative of the ``average'' workload.
               Given more time, I would have liked to retry this experiment with a
@@ -390,7 +390,7 @@
         \textbf{Worst Case Program:}  To make some headway on the second bullet point, I decided to create a
         synethtic ``worst-case'' program: a linked list traversal. Since every
         store of a pointer to memory requires an encrypted store to the metadata
-        table, any pointer-chasing program would incur a gigantic overhead.
+        table, I suspected that any pointer-chasing program would incur an extreme overhead.
 
         \bigbreak{}
 
@@ -405,13 +405,15 @@
 
             \begin{figure}[H]
                 \centering
-                \includegraphics[width=0.6\textwidth]{/Users/parthsarkar/Downloads/pointer-chase-results.png}
+                \includegraphics[width=0.6\textwidth]{/Users/parthsarkar/Desktop/actual_pointer-chase-results.png}
                 \caption{Pointer Chase Performance (XOR vs. AES)}
             \end{figure}
 
-        Here, the overhead for AES is astronomical. In terms of raw time, we have a
-        $\frac{7.245}{0.129} = 56.16\times$ overhead for AES encryption in our
-        worst-case program. 
+        Here, \verb|./baseline| is a binary that performs AES encryption but no
+        actual computation. I use this to obtain a baseline for how long it takes
+        to encrypt the first-level metadata table. Thus, this image shows that,
+        for the pointer-chasing benchmark at \verb|-O3|, we find an astronomical
+        $\frac{7.188 - 6.737}{0.060} = 7.52\times$ performance degradation.
 
         \subsubsection{Security Guarantees}
 
@@ -459,7 +461,7 @@
             before being assigned to a variable. It was ultimately too challenging
             to deal with all of the edge cases of variable encryption (especially
             considering how AES requires encryption over 128 bits, not 64) within
-            the time frame. Instead, I decided to move on to the compiler pass, even
+            the given time frame. Instead, I decided to move on to the compiler pass, even
             if I had a weaker motivation than I was hoping for!
 
 \section{Dataflow Optimization: Eliding Stack Dereference Checks}
@@ -509,7 +511,7 @@
         analysis, constant propagation). Instead, even though it seemed straightforward, 
         it felt like an amalgamation
         of interval analysis (i.e. what \textit{range} of values can this pointer
-        exist within?), alias analysis (i.e. which memory locations does a pointer
+        exist within?), alias analysis (i.e. which memory locations or allocation callpoints does a pointer
         point to?), and constant propagation. Therefore, I had some real concerns
         regarding the termination of the analysis and whether I would achieve any
         meaningful results.
@@ -590,12 +592,14 @@
 
     \subsection{Rocq Encoding \& Formal Proof of Monotonicity}
 
-            The above informal definitions helped provide an intuition for my analysis
-            throughout the implementation process, but I found the formalization
+            While the above informal definitions helped provide an intuition for my analysis
+            throughout the implementation process, I found the formalization process
             immensely valuable; if I implemented my LLVM pass in accordance with my Rocq implemenation,
             then I would guarantee termination with useful results.
 
             \bigbreak{}
+
+            \subsubsection{Monotonicity of Join}
 
             First, I encoded the lattice members precisely as described in 4.1.1:
 
@@ -627,19 +631,195 @@
             Though the $\sqcup$ binary operation is straightforward, I will 
             defer to the \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/8be2130a53f6cb4e7e283aeb8e46bc1ba478985f/spa.v#L36}{source code}.
             Finally, given this definition of a lattice, I provided an
-            implemenation for the following specification:
+            implemenation for the following specification. It is long, so I
+            again defer to the source file (same as above).
 
             \begin{verbatim}
             Theorem join_is_monotonic : forall x y z: alv, 
                 (leq x y -> leq (join x z) (join y z))
              /\ (leq y z -> leq (join x y) (join x z)).
             \end{verbatim}
-            
+
+            \subsubsection{Montonicity of Flow Rules}
+
+                The next piece of the formalization involved specifying what
+                happens to a variable's mapping when it encounters an LLVM
+                instruction that assigns that variable. These so-called ``flow rules''
+                are also required to be monotonic. Here is my representation of
+                LLVM instructions that assign to pointers; aside from  $\phi$-nodes,
+                the first three constructors describe the complete list of instructions that compute constant offsets
+                from stack-allocated variables:
+
+                \begin{verbatim}
+                Inductive llvm_instruction : Type :=
+                    | static_alloca (typ_size : nat) (fp_ofst : nat)
+                    | bitcast (typ_size : nat) (operand_alv : alv)
+                    | gep (typ_size : nat) (ofst : nat) (operand_alv : alv)
+                    | other.
+                \end{verbatim}
+
+
+                Then, I described the flow rules in a Rocq function definition,
+                written \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/8be2130a53f6cb4e7e283aeb8e46bc1ba478985f/spa.v#L113}{here}.
+                Intuitively, the rule for \verb|static_alloca| provides a variable with a \verb|fpoffset| ALV,
+                \verb|bitcast| refines a \verb|fpoffset| value with new type information,
+                and the \verb|getelementptr| instruction updates a \verb|fpoffset| with the new \verb|ptr| value
+                computed in the pointer arithmetic operation itself. 
+
+                \bigbreak{}
+
+                I provide the theorem and implementation proving the monotonicity
+                of flow rules below. I made use of the \verb|auto| Rocq tactic for simpler proofs that are more robust to data structure changes.
+
+                \begin{verbatim}
+                Theorem flow_rules_monotonic : 
+                    forall insn, leq (flow_rule insn) (flow_rule insn).
+                Proof.
+                    destruct insn; simpl; auto; 
+                    destruct operand_alv; simpl; auto.
+                Qed.
+                \end{verbatim}
             
     \subsection{LLVM Implementation Details}
 
-    \subsection{Correctness, Results \& Evaluation}
+        I thought it would be valuable to briefly shed light on some specifics
+        regarding my LLVM pass.  I implemented my LLVM dataflow analysis in LLVM 12's standard C++ 
+        internal representation. Because the analysis was specific to Softbound+CETS,
+        I included the analysis in the same file as the transformation that
+        provides Softbound+CETS instrumentation. The analysis is approximately 450
+        lines of code (including abstraction behind C++ niceties, like classes).
+        The source code is available \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/009263fa16b6ff7cc22f6afadf9561a9507f60b0/llvm-project/llvm/lib/Transforms/SoftBoundCETS/SoftBoundCETS.cpp#L370}{here}.
+    
+        \bigbreak{}
 
+        I tried very hard to abide by a direct translation of the Rocq
+        description of my flow rules to avoid introducing any compiler bugs. The transfer
+        function (that describes how an instruction flows variable to ALV mappings)
+        is available \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/009263fa16b6ff7cc22f6afadf9561a9507f60b0/llvm-project/llvm/lib/Transforms/SoftBoundCETS/SoftBoundCETS.cpp#L601}{here}.
+    
+        \bigbreak{}
+
+        Next, I actually  use the results of this analysis by passing an object
+        representing analysis results to the function that performs the transformation.
+    Specifically, I perform the analysis \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/009263fa16b6ff7cc22f6afadf9561a9507f60b0/llvm-project/llvm/lib/Transforms/SoftBoundCETS/SoftBoundCETS.cpp#L4061}{here},
+        and I use the resulting object as an argument to the function \verb|SoftBoundCETSPass::addSpatialChecks|.
+        This transformation takes in an instruction and instruments it with a
+        call to \verb|spatial_dereference_check()| if it does not early-return.
+        So, I use my analysis results precisely 
+        \href{https://github.com/parthsarkar17/softboundcets-ese5370/blob/009263fa16b6ff7cc22f6afadf9561a9507f60b0/llvm-project/llvm/lib/Transforms/SoftBoundCETS/SoftBoundCETS.cpp#L3407}{here}, 
+        and early-return if the analysis says it's OK to do so!
+
+        \subsection{Correctness, Results \& Evaluation}
+            
+            The following sections detail the way I evaluated my optimization.
+            In the spirit of my Rocq proofs, I felt strongly that the 
+            implementation should be thoroughly tested for correctness. I was
+            also very curious to see what performance difference my pass would make.
+
+            \subsubsection{Correctness}
+
+                First, I began with hand-written tests. Since my optimization
+                attempts to elide dereferences to constant-offset pointers to 
+                the stack, I thought of two specific ways my implementation might
+                be broken:
+
+                \bigbreak{}
+
+                I first wrote a program containing the following buffer overflow:
+
+                \begin{verbatim}
+                    // Test Code A
+                    int buf[] = {1, 2, 3};
+                    buf[3] = 37;
+                \end{verbatim}
+
+                As is expected,  with my optimization enabled, this program fails with a Softbound+CETS-thrown 
+                exception. I then made sure my type size propagation was correctly implemented
+                by attempting a ``type confusion'' style attack. Here, the pointer
+                variable \verb|buf| should only be able to write 3 bytes. However,
+                I attempt to cast this pointer to an \verb|(int *)| value, and
+                thereby escalate the privilege by 1 byte.
+
+                \begin{verbatim}
+                    // Test Code B
+                    char buf[] = {1, 2, 3};
+                    int *buf_alias = (int *)buf;
+                    *buf_alias = 37;
+                \end{verbatim}
+
+                Again, my program fails as desired. 
+                
+                \bigbreak{}
+
+                For a more thorough and representative
+                suite of tests, (INSERT [revisited]) provides a way to run
+                the Juliet C Test Suite, which is a testing benchmark that
+                contains C programs with vulnerabilities. By providing both
+                well-formed and ill-formed inputs, compilers protecting against
+                memory violations should succeed on valid inputs and abort
+                on bad inputs. \href{https://github.com/parthsarkar17/softboundcets-ese5370/tree/009263fa16b6ff7cc22f6afadf9561a9507f60b0/juliet-test-suite-c}{This subdirectory} of my project contains the
+                output of the Juliet C Test Suite's stack buffer overflow tests on standard Softbound+CETS (prefixed with \verb|not_spa|)
+                and Softbound+CETS with my optimization enabled (prefixed with \verb|spa|).
+                I performed a \verb|diff| of the good and bad test case outputs respectively,
+                and saw no difference from the original Softbound+CETS implementation.
+
+                \bigbreak{}
+
+                Together with my Rocq implementation proving monotonicity and a
+                sufficiently conservative analysis, I believe these two methods of testing
+                demonstrate the correctness of my implementation.
+
+            \subsubsection{Results \& Evaluation}
+
+                To evaluate any effects of my optimization, I used the LU-decomposition
+                and linear solve benchmark from Section 3. For compiler flags
+                \verb|-O0| and \verb|-O3|, I plotted the runtimes of the 
+                Softbound+CETS instrumented code both with and without my
+                optimization, normalized against the execution time taken by the program compiled with my system's default \verb|clang|
+                binary.
+
+                \begin{figure}[H]
+                    \centering
+                    \includegraphics[width=0.7\textwidth]{/Users/parthsarkar/Desktop/O0-iter4-normd.png}
+                    \caption{Normalized Time vs. Compiler Setups (O0, iter=4)}
+                \end{figure}
+
+                As demonstrated by the image above, my optimization provides
+                an over $2\times$ speedup compared to baseline Softbound+CETS in \verb|-O0|, which was definitely a
+                nice surprise. Another surprising result was the fact that baseline
+                Softbound+CETS took almost $25\times$ the normal \verb|clang|-compiled binary's running time.
+                This is much larger than the average of 140\% cited by (CITATION; revisited).
+
+                \bigbreak{}
+
+                Unfortunately, my optimization seemed to have no effect when each
+                binary was compiled with \verb|-O3|:
+
+                \begin{figure}[H]
+                    \centering
+                    \includegraphics[width=0.7\textwidth]{/Users/parthsarkar/Desktop/O3-iter16-normd.png}
+                    \caption{Normalized Time vs. Compiler Setups (O3, iter=16)}
+                \end{figure}
+
+                Here are my suspicions. First, \verb|-O3| introduces a myriad of other optimizations that make it more challenging to
+                single out the effect of any one optimization. Second, more importantly, \verb|-O3|
+                includes a pass that promotes many variables from living in the stack frame to living
+                in registers. Therefore, word-sized values that we would initially have to grab from the stack
+                frame under \verb|-O0| (each of which previously required a Softbound+CETS dereference check
+                that my pass had the opportunity to optimize away)
+                can now be retrieved \textit{for free} because they already exist in architectural registers.
+                These word-sized values in the stack were prime targets for my pass because
+                pointers to these values were all constant offsets from the frame pointer.
+                I suspect that my pass has no added effect here in \verb|-O3| because all of these
+                word-sized values have now been promoted into registers, and therefore no longer benefit from
+                dereference check elision; in fact, they no longer need dereference checks at all!
+
+
+                \bigbreak{}
+
+                While my pass only has a tangible effect in \verb|-O0|, I argue
+                that it should always be run in \verb|-O0|, even if this flag typically means ``no optimizations''.
+                
 
 
 \end{document}
