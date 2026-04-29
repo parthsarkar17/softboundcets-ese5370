@@ -3,6 +3,7 @@
 \usepackage{semantic}
 \usepackage{hyperref}
 \usepackage{float}
+\usepackage{enumitem}
 \usepackage[a4paper, total={6in, 8in}]{geometry}
 \setlength{\parindent}{0pt}
 
@@ -398,7 +399,7 @@
         prints the sum, and then frees the nodes. The entire program has $O(n)$ complexity.
         The following image shows the raw time taken\footnote{The image
         shows me running ``normal-pointer-chase'', but this was actually a binary with
-        XOR encryption. I didn't think it was necessary to distinguish
+        XOR encryption enabled. I didn't think it was necessary to distinguish
         between the normal Softbound+CETS and XOR versions because
         the overhead would be negligible for standard XOR operations (that are inlined, so no stack frame overhead either).} with \verb|-O3|:
 
@@ -462,7 +463,64 @@
             if I had a weaker motivation than I was hoping for!
 
 \section{Dataflow Optimization: Eliding Stack Dereference Checks}
-            
+
+    The final piece of my project was the dataflow analysis and optimization that
+    I implemented on top of the Softbound+CETS framework. As a brief motivation,
+    every dereference (i.e. load or store) must undergo a check at runtime to make sure the pointer,
+    with respect to the size of the object being pointed to, lies within a
+    base and a bound. By default, this check is implemented as a non-inlined
+    function call; in the best case, the branch is inlined. However, it remains
+    true that a subroutine call or branch on \textit{every} dereference is quite
+    expensive. Hence, it is valuable to elide dereference checks whenever possible,
+    without giving up security guarantees. For example, as a first-order solution, 
+    Softbound+CETS already elides dereferences to global memory since pointers 
+    into that region are easy to identify, and global memory is statically sized.
+
+    \bigbreak{}
+
+    Further, the idea of applying dataflow analyses is not new to Softbound+CETS; the
+    original implementation uses LLVM's inbuilt dominator analysis to use the fact that,
+    if a dereference of pointer $p$ dominates a second dereference to $p$, then
+    the second derefence check can be elided. My pass attempts to make a more
+    aggressive optimization that is not provided out-of-the-box by LLVM.
+
+    \bigbreak{}
+
+    At a high level, my optimization proves that type-aware dereferences for constant-offset 
+    pointers into stack memory can be elided. This is valuable for fixed-size
+    arrays and stack-allocated structs, which are relatively common progrmaming patterns.
+    My analysis shows that checks on these dereferences can be moved from
+    being performed at runtime, to instead being performed at compile time.
+
+    \bigbreak{}
+
+    Specifically, my analysis returns the following information for each variable
+    at each basic block. If the variable is a pointer variable, either we:
+    \begin{enumerate}[label=\textbf{\arabic*}]
+        \item Cannot say anything useful about the variable
+        \item Or, we know \textbf{(A)} the \textit{base}, \textbf{(B)} the \textit{bound}, and the \textbf{(C)} \textit{size} of the object being pointed to
+    \end{enumerate}
+
+    \subsection{Intraprocedural Dataflow Theory}
+
+        Understanding the theory of dataflow analyses was, to me, a critical part
+        of my project. Specifically, this analysis did not seem like any of the
+        ones that I was previously taught (e.g. reaching definitions, liveness
+        analysis, constant propagation). Instead, it seemed to be an amalgamation
+        of interval analysis (i.e. what \textit{range} of values can this pointer
+        exist within?), alias analysis (i.e. which memory locations does a pointer
+        point to?), and constant propagation. Therefore, I had some real concerns
+        regarding the termination of my analysis and whether I would achieve any
+        meaningful results.
+        
+
+    \subsection{Rocq Encoding \& Formal Proof of Monotonicity}
+
+    \subsection{LLVM Implementation Details}
+
+    \subsection{Correctness, Results \& Evaluation}
+
+
 
 \end{document}
 
