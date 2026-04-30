@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2024.1.13)  29 APR 2026 20:58
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2024.1.13)  29 APR 2026 21:19
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -363,24 +363,24 @@ Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
 ) (./report.aux)
 \openout1 = `report.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 13.
-LaTeX Font Info:    ... okay on input line 13.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
  (/usr/local/texlive/2023/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
 \scratchcounter=\count297
@@ -402,15 +402,15 @@ File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Live
 ))
 \symgns@font=\mathgroup6
 LaTeX Font Info:    Overwriting symbol font `gns@font' in version `bold'
-(Font)                  TS1/cmr/m/n --> TS1/cmr/b/n on input line 13.
-Package gensymb Info: Math companion symbols declared on input line 13.
-LaTeX Info: Redefining \degree on input line 13.
-LaTeX Info: Redefining \celsius on input line 13.
-Package gensymb Info: Using text companion symbols for \degree, \celsius and \perthousand on input line 13.
-LaTeX Info: Redefining \ohm on input line 13.
-Package gensymb Info: Using \textohm for \ohm on input line 13.
-Package gensymb Info: Using \textmu for \micro on input line 13.
-Package hyperref Info: Link coloring OFF on input line 13.
+(Font)                  TS1/cmr/m/n --> TS1/cmr/b/n on input line 14.
+Package gensymb Info: Math companion symbols declared on input line 14.
+LaTeX Info: Redefining \degree on input line 14.
+LaTeX Info: Redefining \celsius on input line 14.
+Package gensymb Info: Using text companion symbols for \degree, \celsius and \perthousand on input line 14.
+LaTeX Info: Redefining \ohm on input line 14.
+Package gensymb Info: Using \textohm for \ohm on input line 14.
+Package gensymb Info: Using \textmu for \micro on input line 14.
+Package hyperref Info: Link coloring OFF on input line 14.
  (./report.out) (./report.out)
 \@outlinefile=\write3
 \openout3 = `report.out'.
@@ -450,11 +450,11 @@ Package hyperref Info: Link coloring OFF on input line 13.
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-LaTeX Font Info:    Trying to load font information for U+msa on input line 15.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 16.
 (/usr/local/texlive/2023/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 15.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 16.
  (/usr/local/texlive/2023/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) [1
@@ -463,85 +463,91 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 </Users/parthsarkar/Desktop/metadata_table.png, id=120, 635.37375pt x 463.7325pt>
 File: /Users/parthsarkar/Desktop/metadata_table.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/metadata_table.png>
-Package pdftex.def Info: /Users/parthsarkar/Desktop/metadata_table.png  used on input line 164.
+Package pdftex.def Info: /Users/parthsarkar/Desktop/metadata_table.png  used on input line 165.
 (pdftex.def)             Requested size: 216.81pt x 158.24011pt.
  [3
 pdfTeX warning (ext4): destination with the same identifier (name{figure.1}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.183 
+l.184 
        </Users/parthsarkar/Desktop/metadata_table.png>]
 </Users/parthsarkar/Downloads/attack_success.png, id=128, 1267.73625pt x 650.43pt>
 File: /Users/parthsarkar/Downloads/attack_success.png Graphic file (type png)
 <use /Users/parthsarkar/Downloads/attack_success.png>
-Package pdftex.def Info: /Users/parthsarkar/Downloads/attack_success.png  used on input line 235.
+Package pdftex.def Info: /Users/parthsarkar/Downloads/attack_success.png  used on input line 236.
 (pdftex.def)             Requested size: 260.17464pt x 133.47795pt.
  [4] [5
 pdfTeX warning (ext4): destination with the same identifier (name{figure.2}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.295     \subsection
+l.296     \subsection
                      {AES Encrypted Table} </Users/parthsarkar/Downloads/attack_success.png>] [6]
 </Users/parthsarkar/Desktop/encryption.png, id=152, 1713.40125pt x 999.735pt>
 File: /Users/parthsarkar/Desktop/encryption.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/encryption.png>
-Package pdftex.def Info: /Users/parthsarkar/Desktop/encryption.png  used on input line 368.
+Package pdftex.def Info: /Users/parthsarkar/Desktop/encryption.png  used on input line 369.
 (pdftex.def)             Requested size: 433.62pt x 252.99933pt.
  [7
 pdfTeX warning (ext4): destination with the same identifier (name{figure.3}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.405 
+l.406 
       {/usr/local/texlive/2023/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc} </Users/parthsarkar/Desktop/encryption.png>]
 </Users/parthsarkar/Desktop/actual_pointer-chase-results.png, id=163, 1202.4925pt x 645.41125pt>
 File: /Users/parthsarkar/Desktop/actual_pointer-chase-results.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/actual_pointer-chase-results.png>
-Package pdftex.def Info: /Users/parthsarkar/Desktop/actual_pointer-chase-results.png  used on input line 408.
+Package pdftex.def Info: /Users/parthsarkar/Desktop/actual_pointer-chase-results.png  used on input line 409.
 (pdftex.def)             Requested size: 260.17464pt x 139.63719pt.
  [8
 pdfTeX warning (ext4): destination with the same identifier (name{figure.4}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.455 
+l.456 
        </Users/parthsarkar/Desktop/actual_pointer-chase-results.png>] [9] [10] [11] [12]
 </Users/parthsarkar/Desktop/O0-iter4-normd.png, id=201, 1709.38625pt x 1000.73875pt>
 File: /Users/parthsarkar/Desktop/O0-iter4-normd.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/O0-iter4-normd.png>
-Package pdftex.def Info: /Users/parthsarkar/Desktop/O0-iter4-normd.png  used on input line 783.
+Package pdftex.def Info: /Users/parthsarkar/Desktop/O0-iter4-normd.png  used on input line 784.
 (pdftex.def)             Requested size: 303.53267pt x 177.69727pt.
  [13]
 </Users/parthsarkar/Desktop/O3-iter16-normd.png, id=207, 1712.3975pt x 1001.7425pt>
 File: /Users/parthsarkar/Desktop/O3-iter16-normd.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/O3-iter16-normd.png>
-Package pdftex.def Info: /Users/parthsarkar/Desktop/O3-iter16-normd.png  used on input line 800.
+Package pdftex.def Info: /Users/parthsarkar/Desktop/O3-iter16-normd.png  used on input line 801.
 (pdftex.def)             Requested size: 303.53267pt x 177.5545pt.
  [14
 pdfTeX warning (ext4): destination with the same identifier (name{figure.5}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.816 
+l.817 
       
 pdfTeX warning (ext4): destination with the same identifier (name{figure.6}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.816 
-       </Users/parthsarkar/Desktop/O0-iter4-normd.png> </Users/parthsarkar/Desktop/O3-iter16-normd.png>] [15] [16] (./report.aux)
+l.817 
+       </Users/parthsarkar/Desktop/O0-iter4-normd.png> </Users/parthsarkar/Desktop/O3-iter16-normd.png>] [15]
+</Users/parthsarkar/Desktop/bib.png, id=221, 1409.265pt x 812.03375pt>
+File: /Users/parthsarkar/Desktop/bib.png Graphic file (type png)
+<use /Users/parthsarkar/Desktop/bib.png>
+Package pdftex.def Info: /Users/parthsarkar/Desktop/bib.png  used on input line 872.
+(pdftex.def)             Requested size: 433.62pt x 249.85687pt.
+ [16 </Users/parthsarkar/Desktop/bib.png>] (./report.aux)
 Package rerunfilecheck Info: File `report.out' has not changed.
 (rerunfilecheck)             Checksum: 4F8AA63B3BDA1A29EFF4B07F274F74D9;4731.
  ) 
 Here is how much of TeX's memory you used:
- 12019 strings out of 476025
- 199800 string characters out of 5790017
+ 12026 strings out of 476025
+ 200042 string characters out of 5790017
  1863388 words of memory out of 5000000
- 32219 multiletter control sequences out of 15000+600000
+ 32225 multiletter control sequences out of 15000+600000
  522691 words of font info for 71 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  75i,8n,76p,460b,590s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb>
-Output written on report.pdf (16 pages, 1143811 bytes).
+Output written on report.pdf (16 pages, 1486614 bytes).
 PDF statistics:
- 305 PDF objects out of 1000 (max. 8388607)
+ 307 PDF objects out of 1000 (max. 8388607)
  242 compressed objects within 3 object streams
  53 named destinations out of 1000 (max. 500000)
- 231 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 236 words of extra memory for PDF output out of 10000 (max. 10000000)
 
