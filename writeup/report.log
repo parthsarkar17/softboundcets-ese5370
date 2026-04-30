@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2024.1.13)  29 APR 2026 17:11
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2024.1.13)  29 APR 2026 20:58
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -460,7 +460,7 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) [1
 
 {/usr/local/texlive/2023/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2]
-</Users/parthsarkar/Desktop/metadata_table.png, id=116, 635.37375pt x 463.7325pt>
+</Users/parthsarkar/Desktop/metadata_table.png, id=120, 635.37375pt x 463.7325pt>
 File: /Users/parthsarkar/Desktop/metadata_table.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/metadata_table.png>
 Package pdftex.def Info: /Users/parthsarkar/Desktop/metadata_table.png  used on input line 164.
@@ -471,7 +471,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.1}) has
                                                   \__shipout_drop_firstpage_...
 l.183 
        </Users/parthsarkar/Desktop/metadata_table.png>]
-</Users/parthsarkar/Downloads/attack_success.png, id=124, 1267.73625pt x 650.43pt>
+</Users/parthsarkar/Downloads/attack_success.png, id=128, 1267.73625pt x 650.43pt>
 File: /Users/parthsarkar/Downloads/attack_success.png Graphic file (type png)
 <use /Users/parthsarkar/Downloads/attack_success.png>
 Package pdftex.def Info: /Users/parthsarkar/Downloads/attack_success.png  used on input line 235.
@@ -482,7 +482,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.2}) has
                                                   \__shipout_drop_firstpage_...
 l.295     \subsection
                      {AES Encrypted Table} </Users/parthsarkar/Downloads/attack_success.png>] [6]
-</Users/parthsarkar/Desktop/encryption.png, id=148, 1713.40125pt x 999.735pt>
+</Users/parthsarkar/Desktop/encryption.png, id=152, 1713.40125pt x 999.735pt>
 File: /Users/parthsarkar/Desktop/encryption.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/encryption.png>
 Package pdftex.def Info: /Users/parthsarkar/Desktop/encryption.png  used on input line 368.
@@ -493,7 +493,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.3}) has
                                                   \__shipout_drop_firstpage_...
 l.405 
       {/usr/local/texlive/2023/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc} </Users/parthsarkar/Desktop/encryption.png>]
-</Users/parthsarkar/Desktop/actual_pointer-chase-results.png, id=159, 1202.4925pt x 645.41125pt>
+</Users/parthsarkar/Desktop/actual_pointer-chase-results.png, id=163, 1202.4925pt x 645.41125pt>
 File: /Users/parthsarkar/Desktop/actual_pointer-chase-results.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/actual_pointer-chase-results.png>
 Package pdftex.def Info: /Users/parthsarkar/Desktop/actual_pointer-chase-results.png  used on input line 408.
@@ -504,13 +504,13 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.4}) has
                                                   \__shipout_drop_firstpage_...
 l.455 
        </Users/parthsarkar/Desktop/actual_pointer-chase-results.png>] [9] [10] [11] [12]
-</Users/parthsarkar/Desktop/O0-iter4-normd.png, id=197, 1709.38625pt x 1000.73875pt>
+</Users/parthsarkar/Desktop/O0-iter4-normd.png, id=201, 1709.38625pt x 1000.73875pt>
 File: /Users/parthsarkar/Desktop/O0-iter4-normd.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/O0-iter4-normd.png>
 Package pdftex.def Info: /Users/parthsarkar/Desktop/O0-iter4-normd.png  used on input line 783.
 (pdftex.def)             Requested size: 303.53267pt x 177.69727pt.
  [13]
-</Users/parthsarkar/Desktop/O3-iter16-normd.png, id=203, 1712.3975pt x 1001.7425pt>
+</Users/parthsarkar/Desktop/O3-iter16-normd.png, id=207, 1712.3975pt x 1001.7425pt>
 File: /Users/parthsarkar/Desktop/O3-iter16-normd.png Graphic file (type png)
 <use /Users/parthsarkar/Desktop/O3-iter16-normd.png>
 Package pdftex.def Info: /Users/parthsarkar/Desktop/O3-iter16-normd.png  used on input line 800.
@@ -525,23 +525,23 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.6}) has
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.816 
-       </Users/parthsarkar/Desktop/O0-iter4-normd.png> </Users/parthsarkar/Desktop/O3-iter16-normd.png>] [15] (./report.aux)
+       </Users/parthsarkar/Desktop/O0-iter4-normd.png> </Users/parthsarkar/Desktop/O3-iter16-normd.png>] [15] [16] (./report.aux)
 Package rerunfilecheck Info: File `report.out' has not changed.
-(rerunfilecheck)             Checksum: 0F7597C22A10FC255FFF2638BBA9CE1A;4525.
+(rerunfilecheck)             Checksum: 4F8AA63B3BDA1A29EFF4B07F274F74D9;4731.
  ) 
 Here is how much of TeX's memory you used:
- 12014 strings out of 476025
- 199753 string characters out of 5790017
+ 12019 strings out of 476025
+ 199800 string characters out of 5790017
  1863388 words of memory out of 5000000
- 32218 multiletter control sequences out of 15000+600000
+ 32219 multiletter control sequences out of 15000+600000
  522691 words of font info for 71 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  75i,8n,76p,460b,590s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2023/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb>
-Output written on report.pdf (15 pages, 1140643 bytes).
+Output written on report.pdf (16 pages, 1143811 bytes).
 PDF statistics:
- 295 PDF objects out of 1000 (max. 8388607)
- 233 compressed objects within 3 object streams
- 49 named destinations out of 1000 (max. 500000)
- 223 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 305 PDF objects out of 1000 (max. 8388607)
+ 242 compressed objects within 3 object streams
+ 53 named destinations out of 1000 (max. 500000)
+ 231 words of extra memory for PDF output out of 10000 (max. 10000000)
 

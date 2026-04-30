@@ -817,10 +817,54 @@
 
                 \bigbreak{}
 
-                While my pass only has a tangible effect in \verb|-O0|, I argue
-                that it should always be run in \verb|-O0|, even if this flag typically means ``no optimizations''.
+                Even though \verb|-O0| typically means ``no optimizations'', I
+                believe that my optimization should always be run at \verb|-O0|,
+                even if you disregard the $2\times$ performance improvement.
+                First, the reason people might want \verb|-O0| is for debugging
+                purposes. If that is the case, removing extraneous information
+                like runtime dereference checks improves program readability.
+                Similarly, people might want to avoid \verb|-O3|, opting instead
+                for \verb|-O0|, because higher optimization levels usually
+                increase code size. In my pass, code size strictly gets smaller
+                because it never adds code; it only removes it.
                 
 
+\section{Conclusion \& General Takeaways}
+
+    Broadly, I feel that my project was successful in attempting to motivate
+    both encryption of metadata variables and the use of targeted,
+    correct compile time optimizations to recover performance sacrificed in the 
+    pursuit of security. Given a larger timeline, I would have liked to extend
+    my work to achieve full, end-to-end encryption of all metadata variables
+    stored to memory. To my understanding, this would have provided the guarantee
+    of memory safety for \textit{all} binaries, including those only partially
+    compiled with Softbound+CETS. While the overhead would have been very large,
+    this further motivates the need for more clever compile time optimizations, including
+    interprocedural optimizations (instead of intraprocedural, like the one I
+    presented here).
+    
+    \bigbreak{}
+    Even if the overhead is too expensive to warrant deployment as real release 
+    code, in my opinion, there is great value in using Softbound+CETS as a debugging tool. Many
+    bugs in C (even if never exploited maliciously) arise as a result of illegal
+    memory accesses, usually leading to cryptic error messages and segmentation faults. Thus, it would be nice to have an active community
+    around Softbound+CETS that routinely upgrades the infrastructure to more
+    recent LLVM versions and plugs in nicely to \verb|clang|.
+
+
+    \subsection*{Personal Fulfillment}
+
+    I deeply enjoyed the process of implementing my dataflow pass, researching
+    the relevant theory, and formally proving important properties about it.
+    The process helped me feel more confident in my implementation as I was
+    writing it, and it generally strengthened my knowledge and interest
+    in the subject matter. Additionallly, it was rewarding to learn about and 
+    work with the LLVM internal representation. It was not as daunting as I 
+    expected, and I now feel more confident approaching tasks that might be 
+    better suited as an LLVM-level analysis.
+\newpage
+
+\section*{Bibliography}
 
 \end{document}
 
